@@ -1,0 +1,26 @@
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <!-- Gradient background -->
+  <defs>
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Rounded square background -->
+  <rect width="128" height="128" rx="24" fill="url(#grad1)"/>
+
+  <!-- AI Sparkle symbol -->
+  <circle cx="64" cy="45" r="8" fill="white" opacity="0.9"/>
+  <circle cx="85" cy="35" r="5" fill="white" opacity="0.7"/>
+  <circle cx="45" cy="35" r="4" fill="white" opacity="0.6"/>
+
+  <!-- Paint brush/wand -->
+  <path d="M 50 55 L 78 83 L 72 89 L 44 61 Z" fill="white" opacity="0.95"/>
+  <path d="M 78 83 L 85 90 Q 88 93 85 96 L 82 99 Q 79 102 76 99 L 69 92 L 72 89 Z" fill="white" opacity="0.85"/>
+
+  <!-- Color dots (representing customization) -->
+  <circle cx="35" cy="75" r="6" fill="#FFD93D" opacity="0.9"/>
+  <circle cx="50" cy="88" r="5" fill="#6BCB77" opacity="0.9"/>
+  <circle cx="65" cy="95" r="4" fill="#FF6B9D" opacity="0.9"/>
+</svg>

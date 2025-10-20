@@ -1,0 +1,41 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p backend)",
+      "Bash(python3 create_icons.py)",
+      "Bash(python3 create_icons_simple.py)",
+      "Bash(chmod +x backend/start_server.sh)",
+      "Bash(cat .env.example)",
+      "Bash(test -f /Users/jared/repos/change-ui-extension/backend/.env)",
+      "Bash(python3 -m venv venv)",
+      "Bash(source venv/bin/activate)",
+      "Bash(pip install -q -r requirements.txt)",
+      "Bash(python main.py)",
+      "Bash(curl -s http://localhost:8000/)",
+      "Bash(pip show openai)",
+      "Bash(python3 -c \"from dom_compressor import DOMCompressor; print(''✓ dom_compressor imports successfully'')\")",
+      "Bash(python3 -c \"from dom_decompressor import DOMDecompressor; print(''✓ dom_decompressor imports successfully'')\")",
+      "Bash(python3 -c \"from main import app; print(''✓ main.py imports successfully'')\")",
+      "Bash(if [ -d \"venv\" ])",
+      "Bash(then echo \"venv exists\")",
+      "Bash(else echo \"venv not found\")",
+      "Bash(fi)",
+      "Bash(python -c \"from main import app; print(''✓ main.py imports successfully with all dependencies'')\")",
+      "Bash(python test_compression.py)",
+      "Bash(chmod +x /Users/jared/repos/change-ui-extension/backend/process_saved_dom.py)",
+      "Bash(pkill -f \"python main.py\")",
+      "Bash(lsof -ti:8000)",
+      "Bash(xargs kill -9)",
+      "Bash(curl -s http://localhost:8000/actions)",
+      "Bash(python3 -m json.tool)",
+      "Bash(env)",
+      "Bash(pip show httpx)",
+      "Bash(python test_openai.py)",
+      "Bash(pip install 'httpx<0.28.0')",
+      "Bash(python3 -c \"import json; data = json.load(open(''requests/www.youtube.com/request_1/raw_dom.json'')); print(''screenshot_provided:'', data.get(''screenshot_provided'', ''NOT PRESENT''))\")",
+      "Bash(python3 -c \"import json; data = json.load(open(''requests/x.com/request_1/raw_dom.json'')); print(''Keys:'', list(data.keys())); print(''screenshot_provided:'', data.get(''screenshot_provided'', ''KEY NOT PRESENT''))\")"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

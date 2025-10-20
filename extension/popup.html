@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Website Customizer</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎨 AI Page Customizer</h1>
+            <p class="subtitle">Natural language DOM transformations</p>
+        </header>
+
+        <main>
+            <div class="input-section">
+                <label for="prompt">What would you like to change?</label>
+                <textarea
+                    id="prompt"
+                    placeholder="Examples:
+• Make the background green
+• Hide all ads
+• Make titles bigger and bold
+• Change all links to purple"
+                    rows="5"
+                ></textarea>
+                <p class="hint">💡 Tip: Press Ctrl+Enter to apply</p>
+            </div>
+
+            <div class="actions">
+                <button id="applyBtn" class="primary-btn">
+                    <span class="btn-text">Apply Changes</span>
+                    <span class="loader hidden"></span>
+                </button>
+                <button id="clearBtn" class="secondary-btn">Clear Cache</button>
+            </div>
+
+            <div class="dev-actions">
+                <button id="sendPageDataBtn" class="dev-btn">
+                    <span class="btn-text">📊 Send Page Data</span>
+                    <span class="loader hidden"></span>
+                </button>
+            </div>
+
+            <div id="status" class="status hidden"></div>
+
+            <div class="info-section">
+                <details>
+                    <summary>📊 Last Transformation</summary>
+                    <div id="lastTransform" class="transform-info">
+                        <p class="no-data">No transformations applied yet</p>
+                    </div>
+                </details>
+
+                <details>
+                    <summary>⚙️ Settings</summary>
+                    <div class="settings-content">
+                        <label for="apiUrl">Backend URL:</label>
+                        <div class="settings-row">
+                            <input
+                                type="text"
+                                id="apiUrl"
+                                value="http://localhost:8000"
+                                placeholder="http://localhost:8000"
+                            >
+                            <button id="saveApiUrl" class="small-btn">Save</button>
+                        </div>
+                        <p class="settings-note">Default: http://localhost:8000</p>
+                    </div>
+                </details>
+            </div>
+        </main>
+
+        <footer>
+            <p class="version">v0.1.0</p>
+        </footer>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+</html>

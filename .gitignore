@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+*.egg-info/
+dist/
+build/
+
+# Environment variables
+.env
+.env.local
+*.key
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+
+# OS
+.DS_Store
+Thumbs.db
+*.tmp
+
+# Logs
+*.log
+logs/
+
+# Extension build artifacts
+extension/*.crx
+extension/*.pem
+extension/*.zip
+
+# Node (if added later)
+node_modules/
+package-lock.json
+yarn.lock
+
+# Testing/Debug data
+/backend/requests
+/backend/test_*.py
+*.test.json
+
+# Cache
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
