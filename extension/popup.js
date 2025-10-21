@@ -9,7 +9,6 @@ const DEFAULT_API_URL = 'http://localhost:8000';
 const promptInput = document.getElementById('prompt');
 const applyBtn = document.getElementById('applyBtn');
 const clearBtn = document.getElementById('clearBtn');
-const sendPageDataBtn = document.getElementById('sendPageDataBtn');
 const statusDiv = document.getElementById('status');
 const lastTransformDiv = document.getElementById('lastTransform');
 const apiUrlInput = document.getElementById('apiUrl');
@@ -168,61 +167,5 @@ saveApiUrlBtn.addEventListener('click', () => {
 promptInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && e.ctrlKey) {
         applyBtn.click();
-    }
-});
-
-// Send Page Data for development/debugging
-sendPageDataBtn.addEventListener('click', async () => {
-    const sendBtnText = sendPageDataBtn.querySelector('.btn-text');
-    const sendLoader = sendPageDataBtn.querySelector('.loader');
-
-    sendPageDataBtn.disabled = true;
-    sendBtnText.textContent = '📤 Sending...';
-    sendLoader.classList.remove('hidden');
-    showStatus('Capturing page DOM data...', 'info');
-
-    try {
-        // Get current tab
-        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-
-        if (!tab) {
-            throw new Error('No active tab found');
-        }
-
-        // Send message to background script to capture and send DOM data
-        chrome.runtime.sendMessage(
-            {
-                action: 'send_page_data',
-                data: {
-                    tabId: tab.id,
-                    url: tab.url
-                }
-            },
-            (response) => {
-                if (chrome.runtime.lastError) {
-                    showStatus(`Error: ${chrome.runtime.lastError.message}`, 'error');
-                    sendPageDataBtn.disabled = false;
-                    sendBtnText.textContent = '📊 Send Page Data';
-                    sendLoader.classList.add('hidden');
-                    return;
-                }
-
-                if (response.success) {
-                    showStatus(`✅ Page data saved to: ${response.path}`, 'success');
-                } else {
-                    showStatus(`Error: ${response.error}`, 'error');
-                }
-
-                sendPageDataBtn.disabled = false;
-                sendBtnText.textContent = '📊 Send Page Data';
-                sendLoader.classList.add('hidden');
-            }
-        );
-
-    } catch (error) {
-        showStatus(`Error: ${error.message}`, 'error');
-        sendPageDataBtn.disabled = false;
-        sendBtnText.textContent = '📊 Send Page Data';
-        sendLoader.classList.add('hidden');
     }
 });
