@@ -34,12 +34,12 @@ class RequestSaver:
 
         return request_dir, request_num
 
-    def _save_screenshot(self, request_dir: str, screenshot_base64: str) -> str:
+    def _save_screenshot(self, screenshot_dir: str, screenshot_base64: str) -> str:
         """
         Save screenshot to disk.
 
         Args:
-            request_dir: Directory to save screenshot in
+            screenshot_dir: Directory to save screenshot in
             screenshot_base64: Base64-encoded screenshot
 
         Returns:
@@ -50,7 +50,7 @@ class RequestSaver:
         if ',' in screenshot_data:
             screenshot_data = screenshot_data.split(',', 1)[1]
 
-        screenshot_path = os.path.join(request_dir, "screenshot.png")
+        screenshot_path = os.path.join(screenshot_dir, "screenshot.png")
         with open(screenshot_path, "wb") as f:
             f.write(base64.b64decode(screenshot_data))
 
@@ -63,10 +63,13 @@ class RequestSaver:
         html: str,
         screenshot: str,
         transformations: List[Dict[str, Any]],
-        url: Optional[str] = None
+        url: Optional[str] = None,
+        llm_messages: Optional[List[Dict[str, Any]]] = None,
+        llm_response: Optional[Dict[str, Any]] = None,
+        extension_response: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
-        Save a transformation request with all its data.
+        Save a transformation request with all its data in a structured format.
 
         Args:
             prompt: User's natural language prompt
@@ -74,6 +77,9 @@ class RequestSaver:
             screenshot: Base64-encoded screenshot
             transformations: Generated transformations
             url: Page URL (optional)
+            llm_messages: Messages sent to LLM (optional)
+            llm_response: Raw response from LLM (optional)
+            extension_response: Response sent to extension (optional)
 
         Returns:
             Dictionary with save information
@@ -82,15 +88,59 @@ class RequestSaver:
         request_dir, request_num = self._get_next_request_dir(domain)
         timestamp = datetime.now().isoformat()
 
-        # Save screenshot
-        screenshot_path = self._save_screenshot(request_dir, screenshot)
+        # Create subdirectories
+        prompt_dir = os.path.join(request_dir, "prompt")
+        output_dir = os.path.join(request_dir, "output")
+        os.makedirs(prompt_dir, exist_ok=True)
+        os.makedirs(output_dir, exist_ok=True)
 
-        # Extract selectors
+        # ========== PROMPT DIRECTORY ==========
+        # Save LLM input messages
+        if llm_messages:
+            message_path = os.path.join(prompt_dir, "message.json")
+            with open(message_path, "w") as f:
+                json.dump({
+                    "timestamp": timestamp,
+                    "url": url,
+                    "messages": llm_messages
+                }, f, indent=2)
+            print(f"[RequestSaver] Saved LLM messages to: {message_path}")
+
+        # Save HTML in prompt directory
+        html_path = os.path.join(prompt_dir, "page.html")
+        with open(html_path, "w", encoding="utf-8") as f:
+            f.write(html)
+        print(f"[RequestSaver] Saved HTML to: {html_path}")
+
+        # Save screenshot in prompt directory
+        screenshot_path = self._save_screenshot(prompt_dir, screenshot)
+
+        # ========== OUTPUT DIRECTORY ==========
+        # Save raw LLM response
+        if llm_response:
+            llm_response_path = os.path.join(output_dir, "llm_response.json")
+            with open(llm_response_path, "w") as f:
+                json.dump({
+                    "timestamp": timestamp,
+                    "response": llm_response
+                }, f, indent=2)
+            print(f"[RequestSaver] Saved LLM response to: {llm_response_path}")
+
+        # Save extension response
+        if extension_response:
+            extension_response_path = os.path.join(output_dir, "extension_response.json")
+            with open(extension_response_path, "w") as f:
+                json.dump({
+                    "timestamp": timestamp,
+                    "response": extension_response
+                }, f, indent=2)
+            print(f"[RequestSaver] Saved extension response to: {extension_response_path}")
+
+        # ========== METADATA (root of request directory) ==========
+        # Save summary metadata
         selectors = [t["selector"] for t in transformations]
-
-        # Save complete request data
-        request_data_path = os.path.join(request_dir, "request_data.json")
-        with open(request_data_path, "w") as f:
+        metadata_path = os.path.join(request_dir, "metadata.json")
+        with open(metadata_path, "w") as f:
             json.dump({
                 "timestamp": timestamp,
                 "request_number": request_num,
@@ -98,24 +148,19 @@ class RequestSaver:
                 "prompt": prompt,
                 "html_length": len(html),
                 "screenshot_length": len(screenshot),
-                "transformations": transformations,
-                "selectors": selectors,
-                "transformation_count": len(transformations)
+                "transformation_count": len(transformations),
+                "selectors": selectors
             }, f, indent=2)
-        print(f"[RequestSaver] Saved request data to: {request_data_path}")
-
-        # Save HTML separately (can be large)
-        html_path = os.path.join(request_dir, "page.html")
-        with open(html_path, "w", encoding="utf-8") as f:
-            f.write(html)
-        print(f"[RequestSaver] Saved HTML to: {html_path}")
+        print(f"[RequestSaver] Saved metadata to: {metadata_path}")
 
         return {
             "request_dir": request_dir,
             "request_num": request_num,
+            "prompt_dir": prompt_dir,
+            "output_dir": output_dir,
             "screenshot_path": screenshot_path,
-            "request_data_path": request_data_path,
-            "html_path": html_path
+            "html_path": html_path,
+            "metadata_path": metadata_path
         }
 
 # Create default RequestSaver instance

@@ -51,7 +51,10 @@ class LLMService:
             request: TransformationRequest containing prompt, html, screenshot, and optional url
 
         Returns:
-            Dictionary with 'transformations' key containing list of transformation objects
+            Dictionary with:
+                - 'transformations': list of transformation objects
+                - 'llm_messages': messages sent to LLM (for debugging)
+                - 'llm_response': raw response from LLM (for debugging)
 
         Raises:
             Exception: If LLM call fails or returns invalid response
@@ -85,7 +88,12 @@ class LLMService:
                 if not actions.validate_action_type(t["action"]):
                     raise ValueError(f"Invalid action type: {t['action']}")
 
-            return transformations_dict
+            # Return transformations along with debugging info
+            return {
+                "transformations": transformations_dict["transformations"],
+                "llm_messages": messages,
+                "llm_response": transformations_dict
+            }
 
         except Exception as e:
             print(f"[LLM Service] Error generating transformations: {str(e)}")

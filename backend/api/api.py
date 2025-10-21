@@ -56,18 +56,32 @@ async def generate_transformations(request: TransformationRequest):
         # Call LLM service with request object
         result = llm_service.generate_transformations(request)
 
-        # Extract transformations
+        # Extract transformations and debugging info
         transformations = result.get("transformations", [])
+        llm_messages = result.get("llm_messages")
+        llm_response = result.get("llm_response")
         print(f"[Generate Transformations] Generated {len(transformations)} transformations")
 
-        # Save request data
-        request_saver.save_transformation_request(prompt=request.prompt,html=request.html,screenshot=request.screenshot,transformations=transformations,url=request.url)
-
-        return {
+        # Build response for extension
+        extension_response = {
             "transformations": transformations,
             "summary": f"Generated {len(transformations)} transformations for: {request.prompt}",
             "selectors": [t["selector"] for t in transformations]
         }
+
+        # Save request data with all debugging information
+        request_saver.save_transformation_request(
+            prompt=request.prompt,
+            html=request.html,
+            screenshot=request.screenshot,
+            transformations=transformations,
+            url=request.url,
+            llm_messages=llm_messages,
+            llm_response=llm_response,
+            extension_response=extension_response
+        )
+
+        return extension_response
 
     except Exception as e:
         print(f"[Generate Transformations] Error: {str(e)}")
