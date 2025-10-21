@@ -30,4 +30,4 @@ pip install -q -r requirements.txt
 echo "Starting server on http://localhost:8000"
 echo "API docs available at http://localhost:8000/docs"
 echo ""
-python main.py
+uvicorn api.api:app --host 0.0.0.0 --port 8000

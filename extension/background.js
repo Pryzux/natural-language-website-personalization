@@ -204,44 +204,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         return true; // Keep channel open for async response
     }
-
-    if (message.action === 'send_page_data') {
-        // Keep old functionality for debugging
-        (async () => {
-            try {
-                const { tabId, url } = message.data;
-                const pageContext = await capturePageContext(tabId);
-
-                // Get API URL
-                const { apiUrl } = await chrome.storage.local.get(['apiUrl']);
-                const finalApiUrl = apiUrl || DEFAULT_API_URL;
-
-                // Send to save_page_data endpoint
-                const response = await fetch(`${finalApiUrl}/save_page_data`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        page_url: url,
-                        dom_data: { html: pageContext.html },
-                        screenshot: pageContext.screenshot
-                    })
-                });
-
-                const result = await response.json();
-                sendResponse({
-                    success: true,
-                    path: result.path
-                });
-            } catch (error) {
-                sendResponse({
-                    success: false,
-                    error: error.message
-                });
-            }
-        })();
-
-        return true;
-    }
 });
 
 /**

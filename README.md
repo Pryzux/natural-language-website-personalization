@@ -58,7 +58,9 @@ cp .env.example .env
 
 3. Start server:
 ```bash
-python main.py
+uvicorn api.api:app --host 0.0.0.0 --port 8000
+# Or use the start script:
+./start_server.sh
 ```
 
 Server runs on `http://localhost:8000`
@@ -153,9 +155,18 @@ List available action types and their parameters.
 ```
 .
 ├── backend/
-│   ├── main.py              # FastAPI server
-│   ├── llm_service.py       # OpenAI integration
-│   ├── actions.py           # Action definitions
+│   ├── api/
+│   │   ├── api.py           # FastAPI server
+│   │   └── types.py         # API request/response types
+│   ├── transform/
+│   │   ├── actions/
+│   │   │   ├── actions.py   # Actions manager
+│   │   │   ├── types.py     # Action type model
+│   │   │   └── definitions.py # Action definitions
+│   │   └── llm/
+│   │       ├── llm_service.py # OpenAI integration
+│   │       └── types.py     # LLM types (Transformation)
+│   ├── save_requests.py     # Request logging
 │   ├── requirements.txt
 │   └── .env
 ├── extension/
@@ -170,13 +181,12 @@ List available action types and their parameters.
 
 ### Adding New Actions
 
-1. Define action in `backend/actions.py`:
+1. Define action in `backend/transform/actions/definitions.py`:
 ```python
-ActionDefinition(
-    action_type=ActionType.YOUR_ACTION,
+Action(
+    action="your_action",
     description="What it does",
-    param_examples={"property": "value"},
-    notes="Usage notes"
+    param_examples={"property": "value"}
 )
 ```
 
