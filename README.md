@@ -1,11 +1,11 @@
 # Natural Language Website Personalization
 
-Multimodal LLM Chrome extension for intelligent webpage transformation. Uses GPT-4o vision + HTML analysis to generate CSS modifications from natural language. Applications: semantic ad blocking, accessibility enhancement, custom theming, content filtering. FastAPI backend with persistent transformation engine.
+Chrome extension for intelligent webpage transformation. Uses GPT-4o vision + HTML analysis to generate CSS modifications from natural language. Applications: ad blocking, accessibility enhancement, custom theming, content filtering. Custom webpage layouts.
 
 ## Features
 
 - **Natural Language Interface**: Describe changes in plain English, no CSS required
-- **Multimodal Analysis**: Combines HTML structure + screenshot context for precise transformations
+- **Multimodal Analysis**: Combines HTML structure + screenshots context for precise transformations
 - **Smart Ad Blocking**: Semantic content filtering beyond traditional filter lists
 - **Accessibility**: Quick fixes for text size, contrast, readability
 - **Custom Theming**: Apply dark mode or custom styles to any website
