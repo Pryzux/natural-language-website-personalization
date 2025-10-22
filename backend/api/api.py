@@ -1,11 +1,6 @@
-"""
-FastAPI backend for AI Website Customizer Chrome Extension
-"""
-
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
-
 from transform.llm import llm_service
 from save_requests import request_saver
 from .types import TransformationRequest
@@ -27,23 +22,28 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, 
 @app.post("/generate_transformations")
 async def generate_transformations(request: TransformationRequest):
     """
-    Generate jQuery selector-based transformations from natural language prompt.
+    Generate jQuery command-chain transformations from natural language prompt.
 
     Takes HTML, screenshot, and user prompt, then uses LLM to generate
-    structured transformations that can be applied by the extension.
+    structured command chains that can be applied by the extension.
 
-    Returns: JSON with 'transformations' array containing selector/action/params objects
+    Returns: JSON with 'transformations' array containing command chains
 
     Example Response:
         {
             "transformations": [
                 {
-                    "selector": "body",
-                    "action": "color",
-                    "params": {"background-color": "green"}
+                    "description": "Apply green background",
+                    "commands": [
+                        {
+                            "selector": "body",
+                            "method": "css",
+                            "args": [{"background-color": "green"}]
+                        }
+                    ]
                 }
             ],
-            "summary": "Applied background color change",
+            "summary": "Generated 1 transformations for: make background green",
             "selectors": ["body"]
         }
     """
@@ -62,11 +62,19 @@ async def generate_transformations(request: TransformationRequest):
         llm_response = result.get("llm_response")
         print(f"[Generate Transformations] Generated {len(transformations)} transformations")
 
+        # Extract all unique selectors from all commands in all transformations
+        selectors = []
+        for t in transformations:
+            for cmd in t.get("commands", []):
+                selector = cmd.get("selector")
+                if selector and selector not in selectors:
+                    selectors.append(selector)
+
         # Build response for extension
         extension_response = {
             "transformations": transformations,
             "summary": f"Generated {len(transformations)} transformations for: {request.prompt}",
-            "selectors": [t["selector"] for t in transformations]
+            "selectors": selectors
         }
 
         # Save request data with all debugging information

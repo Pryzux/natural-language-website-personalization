@@ -138,7 +138,14 @@ class RequestSaver:
 
         # ========== METADATA (root of request directory) ==========
         # Save summary metadata
-        selectors = [t["selector"] for t in transformations]
+        # Extract all unique selectors from command chains
+        selectors = []
+        for t in transformations:
+            for cmd in t.get("commands", []):
+                selector = cmd.get("selector")
+                if selector and selector not in selectors:
+                    selectors.append(selector)
+
         metadata_path = os.path.join(request_dir, "metadata.json")
         with open(metadata_path, "w") as f:
             json.dump({
@@ -162,6 +169,7 @@ class RequestSaver:
             "html_path": html_path,
             "metadata_path": metadata_path
         }
+
 
 # Create default RequestSaver instance
 request_saver = RequestSaver()

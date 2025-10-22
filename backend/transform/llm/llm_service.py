@@ -1,21 +1,17 @@
-"""
-LLM Service Module
-
-Handles communication with OpenAI API to generate DOM transformations
-from natural language prompts + HTML + screenshot context.
-"""
 
 import os
-import json
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from openai import OpenAI
-
-from transform.actions import actions
+import time
+import json
+from .types import TransformationResponse
 from api.types import TransformationRequest
 
 
 # OpenAI client (initialized lazily)
 _client = None
+
+MAX_HTML = 70000
 
 
 def get_client():
@@ -30,34 +26,20 @@ def get_client():
 
 
 class LLMService:
-    """Service for generating DOM transformations using LLM"""
+    """Service for generating DOM transformations using LLM with Structured Outputs"""
 
     def __init__(self, model: str = "gpt-4o"):
-        """
-        Initialize LLM service.
-
-        Args:
-            model: OpenAI model to use (default: gpt-4o for vision support)
-        """
         self.model = model
-        self.action_types = actions.get_action_types()
-        self.action_definitions = actions.get_action_definitions()
+
 
     def generate_transformations(self, request: TransformationRequest) -> Dict[str, Any]:
         """
         Generate DOM transformations from user prompt and page context.
 
-        Args:
-            request: TransformationRequest containing prompt, html, screenshot, and optional url
-
         Returns:
-            Dictionary with:
-                - 'transformations': list of transformation objects
+                - 'transformations': list of transformation objects with command chains
                 - 'llm_messages': messages sent to LLM (for debugging)
-                - 'llm_response': raw response from LLM (for debugging)
-
-        Raises:
-            Exception: If LLM call fails or returns invalid response
+                - 'llm_response': parsed response from LLM (for debugging)
         """
 
         system_prompt = self._build_system_prompt()
@@ -65,28 +47,33 @@ class LLMService:
 
         try:
             # Build messages
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_message_content}
-            ]
+            messages = [ {"role": "system", "content": system_prompt}, {"role": "user", "content": user_message_content} ]
 
-            # Call OpenAI API with JSON mode
             client = get_client()
+
+            api_start = time.time()
+            print(f"[LLM Service] Calling OpenAI API (using regular JSON mode for speed)...")
+
+            # Use regular JSON mode instead of Structured Outputs - faster!
             response = client.chat.completions.create(
                 model=self.model,
                 messages=messages,
                 response_format={"type": "json_object"},
-                temperature=0.1  # Low temperature for consistent output
+                temperature=0.3
             )
 
-            # Extract and validate transformations
-            result_text = response.choices[0].message.content
-            transformations_dict = json.loads(result_text)
+            print(f"[LLM Service] API responded in {time.time() - api_start:.2f}s")
 
-            # Validate action types
-            for t in transformations_dict["transformations"]:
-                if not actions.validate_action_type(t["action"]):
-                    raise ValueError(f"Invalid action type: {t['action']}")
+            # Parse and validate with Pydantic
+           
+            result_text = response.choices[0].message.content
+            result_dict = json.loads(result_text)
+
+            # Validate using Pydantic
+            validated = TransformationResponse(**result_dict)
+            transformations_dict = validated.model_dump()
+
+            print(f"[LLM Service] Generated {len(transformations_dict['transformations'])} transformations")
 
             # Return transformations along with debugging info
             return {
@@ -97,77 +84,100 @@ class LLMService:
 
         except Exception as e:
             print(f"[LLM Service] Error generating transformations: {str(e)}")
+            print(f"[LLM Service] Error type: {type(e).__name__}")
+
+            # If it's a validation error, show more details
+            if hasattr(e, 'errors'):
+                print(f"[LLM Service] Validation errors: {e.errors()}")
+
             raise
 
+
     def _build_system_prompt(self) -> str:
-        """
-        Build the system prompt that defines the LLM's role and constraints.
 
-        Returns:
-            System prompt string
-        """
-        actions_json = json.dumps(self.action_definitions, indent=2)
+        return """You are a website personalizer assistant. Analyze the HTML and screenshot, then generate commands to transform the page based on the user's request.
 
-        return f"""You are a web page personalization assistant that outputs JSON.
+**Output JSON Format:**
+{
+  "transformations": [
+    {
+      "description": "what this transformation does",
+      "commands": [
+        {"selector": "...", "method": "css", "cssProps": {"property": "value"}},
+        {"selector": "...", "method": "relocate", "target": "...", "position": "append"}
+      ]
+    }
+  ]
+}
 
-                Your task is to analyze the HTML, screenshot of the page, and user prompt, then generate structured JSON describing CSS selector-based transformations that will modify the page according to the user's intent.
+**Available Methods:**
 
-                **Output Format:**
-                You MUST return a JSON object with this exact structure:
-                {{
-                "transformations": [
-                    {{
-                    "selector": "body",
-                    "action": "color",
-                    "params": {{"background-color": "green"}}
-                    }}
-                ]
-                }}
+**relocate** - Move element to a new position in the DOM
+  - selector: element to move
+  - target: destination selector
+  - position: "append" | "prepend" | "before" | "after"
+  - Example: {"selector": ".widget", "method": "relocate", "target": "body", "position": "append"}
 
-                **Available Actions:**
-                {actions_json}
+**css** - Apply CSS styling
+  - selector: elements to style
+  - cssProps: {property: value}
+  - Example: {"selector": "body", "method": "css", "cssProps": {"background": "blue", "color": "white"}}
 
-                **Rules:**
-                1. Output ONLY valid JSON - no explanations, no markdown code blocks, just raw JSON
-                2. Each transformation must have:
-                - selector: A valid CSS selector (be specific but generalizable)
-                - action: One of {self.action_types}
-                - params: An object with CSS property key-value pairs (follow param_examples above)
+**addClass** / **removeClass** / **toggleClass** - Manage CSS classes
+  - selector: elements to modify
+  - content: class name
+  - Example: {"selector": ".card", "method": "addClass", "content": "dark-mode"}
 
-                3. Use concise and specific selectors that will work across page reloads
-                4. Prefer class-based or attribute-based selectors over nth-child when possible
-                5. Do NOT include scripts, event handlers, or JavaScript execution
-                6. Only safe DOM/style changes are allowed
+**text** / **html** - Change element content
+  - selector: elements to modify
+  - content: new content
+  - Example: {"selector": "h1", "method": "text", "content": "Welcome"}
 
-                **Selector Best Practices:**
-                - Use `.classname` for repeated elements
-                - Use `#id` for unique elements
-                - Use `[attribute="value"]` for semantic targeting
-                - Use `tag.class` for specificity
-                - Combine with commas for multiple targets: `h1, h2, h3`
-                - Use descendant selectors when needed: `.container .item`
+**append** / **prepend** / **before** / **after** - Insert HTML
+  - selector: reference element
+  - content: HTML to insert
+  - Example: {"selector": "body", "method": "prepend", "content": "<div class='banner'>New!</div>"}
 
-                **Safety:**
-                - Never modify or remove authentication elements
+**remove** - Delete element from DOM
+  - selector: elements to remove
+  - Example: {"selector": ".ad", "method": "remove"}
 
-                Remember: Output must be valid JSON only, starting with {{ and ending with }}"""
+**hide** / **show** - Toggle visibility
+  - selector: elements to hide/show
+  - Example: {"selector": ".popup", "method": "hide"}
 
-    def _build_user_message(self,prompt: str,html: str,screenshot_base64: str,url: Optional[str] = None) -> List[Dict[str, Any]]:
+**wrap** / **unwrap** - Wrap element in container or remove wrapper
+  - selector: element to wrap/unwrap
+  - content: wrapper HTML (for wrap)
+  - Example: {"selector": "img", "method": "wrap", "content": "<figure class='image-wrapper'></figure>"}
 
+**attr** / **removeAttr** - Modify attributes
+  - selector: elements to modify
+  - cssProps: {attribute: value} (for attr)
+  - content: attribute name (for removeAttr)
+  - Example: {"selector": "a", "method": "attr", "cssProps": {"target": "_blank"}}
+
+**clone** - Duplicate element
+  - selector: element to clone
+  - Example: {"selector": ".widget", "method": "clone"}"""
+
+
+    def _build_user_message(self, prompt: str, html: str, screenshot_base64: str, url: str | None = None) -> List[Dict[str, Any]]:
+        """Build user message with text context and screenshot. """
+        
         content = []
-        # Add text context
-        context_text = f"""
 
-        **User Request:**
+        # Add text context
+        context_text = f"""**User Request:**
         {prompt}
 
         **Page URL:**
         {url or 'Not provided'}
 
         **Page HTML:**
-        {html[:50000]}
+        {html[:MAX_HTML]}
 
-        Generate JSON transformations to fulfill the user's request."""
+       """
 
         content.append({"type": "text", "text": context_text})
 
