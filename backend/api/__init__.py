@@ -1,10 +1,9 @@
 """
 API Package
 
-Contains FastAPI application and type definitions.
+Contains FastAPI application.
 """
 
 from .api import app
-from .types import TransformationRequest
 
-__all__ = ["app", "TransformationRequest"]
+__all__ = ["app"]

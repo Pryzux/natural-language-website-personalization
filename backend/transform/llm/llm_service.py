@@ -9,7 +9,7 @@ import json
 from typing import Dict, Any, List
 from .models import OpenAIModel, AnthropicModel, BaseLLMModel
 from .types import TransformationResponse
-from api.types import TransformationRequest
+from shared.api import TransformationRequest
 
 
 class LLMService:
@@ -96,8 +96,11 @@ class LLMService:
                 - 'llm_messages': messages sent to LLM (for debugging)
                 - 'llm_response': parsed response from LLM (for debugging)
         """
+        print(f"[LLM Service] Building prompt messages...")
+
         # Load system prompt from file
         system_prompt = self._load_system_prompt()
+        print(f"[LLM Service] System prompt: {len(system_prompt):,} chars")
 
         user_message_content = self._build_user_message(
             request.prompt,
@@ -105,6 +108,15 @@ class LLMService:
             request.screenshot,
             request.url
         )
+
+        # Calculate total context being sent
+        total_text_chars = len(system_prompt)
+        for item in user_message_content:
+            if item.get("type") == "text":
+                total_text_chars += len(item.get("text", ""))
+
+        print(f"[LLM Service] Total text in prompt: {total_text_chars:,} chars (~{total_text_chars//4:,} tokens estimated)")
+        print(f"[LLM Service] Images in prompt: {sum(1 for item in user_message_content if item.get('type') == 'image_url')}")
 
         try:
             # Time the API call
@@ -186,6 +198,12 @@ class LLMService:
 
         content = []
 
+        # Determine HTML to send (with or without truncation)
+        html_to_send = html if self.max_html is None else html[:self.max_html]
+
+        # Log HTML size info
+        print(f"[LLM Service] HTML size: original={len(html):,} chars, sending={len(html_to_send):,} chars, truncated={len(html_to_send) < len(html)}")
+
         # Add text context
         context_text = f"""**User Request:**
         {prompt}
@@ -194,7 +212,7 @@ class LLMService:
         {url or 'Not provided'}
 
         **Page HTML:**
-        {html if self.max_html is None else html[:self.max_html]}
+        {html_to_send}
 
        """
 

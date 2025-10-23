@@ -5,13 +5,16 @@ from dotenv import load_dotenv
 from transform.llm.llm_service import get_llm_service
 from requests.save_requests import request_saver
 from sanitize import sanitize_request
-from .types import TransformationRequest
+from shared.api import TransformationRequest
 
 # Load environment variables
 load_dotenv()
 
 # Check if request saving is enabled
 SAVE_REQUESTS = os.getenv("SAVE_REQUESTS", "false").lower() == "true"
+
+# Check if sanitization is disabled
+DISABLE_SANITIZATION = os.getenv("DISABLE_SANITIZATION", "false").lower() == "true"
 
 # Initialize
 app = FastAPI(
@@ -53,15 +56,46 @@ async def generate_transformations(request: TransformationRequest):
         }
     """
     try:
+        print(f"\n{'='*80}")
+        print(f"[API] NEW TRANSFORMATION REQUEST")
+        print(f"{'='*80}")
+        print(f"[API] Prompt: {request.prompt}")
+        print(f"[API] URL: {request.url}")
+        print(f"[API] Incoming HTML size: {len(request.html):,} chars ({len(request.html.encode('utf-8')):,} bytes)")
+        print(f"[API] Screenshot size: {len(request.screenshot):,} chars")
 
         # Validate screenshot is provided
         if not request.screenshot:
             raise HTTPException(status_code=400, detail="Screenshot is required for generating transformations")
 
-        # Sanitize request based on domain
-        sanitized_request = sanitize_request(request)
+        # Save raw request immediately (if enabled) - useful for debugging crashes
+        request_info = None
+        if SAVE_REQUESTS:
+            request_info = request_saver.save_raw_request(
+                prompt=request.prompt,
+                html=request.html,
+                screenshot=request.screenshot,
+                url=request.url
+            )
+
+        # Sanitize request based on domain (unless disabled)
+        print(f"\n[API] SANITIZATION PHASE:")
+        if DISABLE_SANITIZATION:
+            print(f"[API] ⚠️  SANITIZATION DISABLED - Sending raw HTML to LLM")
+            sanitized_request = request
+            was_sanitized = False
+        else:
+            sanitized_request = sanitize_request(request)
+            was_sanitized = sanitized_request.html != request.html
+
+            if was_sanitized:
+                reduction_pct = (1 - len(sanitized_request.html)/len(request.html)) * 100
+                print(f"[API] Sanitized: {len(request.html):,} → {len(sanitized_request.html):,} chars ({reduction_pct:.1f}% reduction)")
+            else:
+                print(f"[API] No sanitization applied (HTML unchanged)")
 
         # Call LLM service with sanitized request
+        print(f"\n[API] LLM SERVICE PHASE:")
         llm_service = get_llm_service()
         result = llm_service.generate_transformations(sanitized_request)
 
@@ -86,18 +120,23 @@ async def generate_transformations(request: TransformationRequest):
             "selectors": selectors
         }
 
-        # Save request data with all debugging information (if enabled)
-        if SAVE_REQUESTS:
-            request_saver.save_transformation_request(
-                prompt=request.prompt,
-                html=request.html,
-                screenshot=request.screenshot,
+        # Save LLM results (if enabled)
+        if SAVE_REQUESTS and request_info:
+            request_saver.save_llm_results(
+                request_dir=request_info["request_dir"],
                 transformations=transformations,
-                url=request.url,
                 llm_messages=llm_messages,
                 llm_response=llm_response,
-                extension_response=extension_response
+                extension_response=extension_response,
+                was_sanitized=was_sanitized,
+                sanitized_html=sanitized_request.html if was_sanitized else None,
+                original_html_length=len(request.html)
             )
+
+        print(f"\n[API] REQUEST COMPLETE")
+        print(f"[API] Transformations generated: {len(transformations)}")
+        print(f"[API] Unique selectors: {len(selectors)}")
+        print(f"{'='*80}\n")
 
         return extension_response
 

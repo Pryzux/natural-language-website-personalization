@@ -11,29 +11,29 @@ from pathlib import Path
 def print_request(domain: str, request_num: int):
     """Print transformations from a request in copy-paste format."""
 
-    # Build path to the LLM response
-    # Script is in /backend/requests/, so go to parent to find domains
+    # Build path to the LLM result (new structure)
     request_dir = Path(__file__).parent / domain / f"request_{request_num}"
-    llm_response_path = request_dir / "output" / "llm_response.json"
-    metadata_path = request_dir / "metadata.json"
+    result_path = request_dir / "llm" / "result.json"
+    prompt_path = request_dir / "raw_received" / "prompt.txt"
 
-    if not llm_response_path.exists():
-        print(f"❌ Request {request_num} not found at {llm_response_path}")
+    if not result_path.exists():
+        print(f"❌ Request {request_num} not found at {result_path}")
         list_available(domain)
         return None
 
-    # Load the response
-    with open(llm_response_path) as f:
-        data = json.load(f)
+    # Load the result
+    with open(result_path) as f:
+        result_data = json.load(f)
 
-    # Load metadata if available
-    metadata = {}
-    if metadata_path.exists():
-        with open(metadata_path) as f:
-            metadata = json.load(f)
+    # Load prompt if available
+    prompt = ""
+    if prompt_path.exists():
+        with open(prompt_path) as f:
+            prompt = f.read()
 
-    # Extract transformations
-    transformations = data.get("response", {}).get("transformations", [])
+    # Extract transformations from extension_response
+    extension_response = result_data.get("extension_response", {})
+    transformations = extension_response.get("transformations", [])
 
     if not transformations:
         print(f"⚠️  No transformations found in request {request_num}")
@@ -43,9 +43,11 @@ def print_request(domain: str, request_num: int):
     output = json.dumps(transformations, indent=2)
 
     print(f"✅ Request {request_num} - {domain}")
-    if metadata.get("prompt"):
-        print(f"📝 Prompt: {metadata['prompt']}")
+    if prompt:
+        prompt_preview = prompt[:60] + "..." if len(prompt) > 60 else prompt
+        print(f"📝 Prompt: {prompt_preview}")
     print(f"🔢 Transformations: {len(transformations)}")
+    print(f"🧹 Sanitized: {result_data.get('was_sanitized', False)}")
     print("\n" + "="*60)
     print(output)
     print("="*60)
@@ -71,18 +73,17 @@ def list_available(domain: str):
     print(f"\n📁 Available requests for {domain}:")
     for req_dir in request_dirs:
         request_num = req_dir.name.replace("request_", "")
-        metadata_path = req_dir / "metadata.json"
+        prompt_path = req_dir / "raw_received" / "prompt.txt"
 
-        if metadata_path.exists():
-            with open(metadata_path) as f:
-                metadata = json.load(f)
-                prompt = metadata.get("prompt", "No prompt")
+        if prompt_path.exists():
+            with open(prompt_path) as f:
+                prompt = f.read().strip()
                 # Truncate long prompts
                 if len(prompt) > 60:
                     prompt = prompt[:60] + "..."
                 print(f"  {request_num}: {prompt}")
         else:
-            print(f"  {request_num}: (no metadata)")
+            print(f"  {request_num}: (no prompt)")
 
 def list_all_domains():
     """List all available domains."""

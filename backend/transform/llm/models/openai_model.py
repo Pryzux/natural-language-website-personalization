@@ -41,12 +41,24 @@ class OpenAIModel(BaseLLMModel):
             {"role": "user", "content": user_message}
         ]
 
+        # Calculate approximate message sizes for debugging
+        system_chars = len(system_prompt)
+        user_text_chars = sum(len(item.get("text", "")) for item in user_message if item.get("type") == "text")
+        user_images = sum(1 for item in user_message if item.get("type") == "image_url")
+
+        print(f"[OpenAI] Sending request: system={system_chars:,} chars, user_text={user_text_chars:,} chars, images={user_images}")
+
         response = self.client.chat.completions.create(
             model=self.model_version,
             messages=messages,
             response_format={"type": "json_object"},
             temperature=temperature
         )
+
+        # Log token usage from response
+        if hasattr(response, 'usage'):
+            usage = response.usage
+            print(f"[OpenAI] Token usage: prompt={usage.prompt_tokens:,}, completion={usage.completion_tokens:,}, total={usage.total_tokens:,}")
 
         return response.choices[0].message.content
 

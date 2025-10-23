@@ -4,7 +4,7 @@ Automatically routes to domain-specific sanitizers based on URL.
 """
 
 import importlib
-from api.types import TransformationRequest
+from shared.api import TransformationRequest
 from .sanitization_types import DOMAIN_SANITIZERS
 
 
