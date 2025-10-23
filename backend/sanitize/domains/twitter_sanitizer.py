@@ -426,6 +426,33 @@ class TwitterSanitizer:
 twitter_sanitizer = TwitterSanitizer()
 
 
+def sanitize(request) -> "TransformationRequest":
+    """
+    Sanitize Twitter/X request.
+
+    Args:
+        request: TransformationRequest object
+
+    Returns:
+        TransformationRequest with sanitized HTML
+    """
+    from api.types import TransformationRequest
+
+    original_size = len(request.html)
+    sanitized_html = twitter_sanitizer.sanitize(request.html)
+    sanitized_size = len(sanitized_html)
+    reduction = (1 - sanitized_size/original_size) * 100
+
+    print(f"[TwitterSanitizer] {original_size:,} → {sanitized_size:,} bytes ({reduction:.1f}% reduction)")
+
+    return TransformationRequest(
+        prompt=request.prompt,
+        html=sanitized_html,
+        screenshot=request.screenshot,
+        url=request.url
+    )
+
+
 def sanitize_twitter_html(html: str) -> str:
     """
     Convenience function to sanitize Twitter HTML.
