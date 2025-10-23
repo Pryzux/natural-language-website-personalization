@@ -187,6 +187,11 @@ details {
     background: #f9f9f9;
     border-radius: 8px;
     padding: 10px;
+    margin-bottom: 10px;
+}
+
+details:last-child {
+    margin-bottom: 0;
 }
 
 summary {
@@ -194,6 +199,17 @@ summary {
     font-weight: 600;
     cursor: pointer;
     color: #667eea;
+    user-select: none;
+}
+
+summary:hover {
+    color: #5568d3;
+}
+
+.hint {
+    font-size: 11px;
+    color: #999;
+    margin-top: 5px;
 }
 
 .transform-info {
@@ -220,6 +236,51 @@ summary {
 
 .transform-details strong {
     color: #667eea;
+}
+
+.settings-content,
+.test-content {
+    margin-top: 10px;
+    font-size: 12px;
+}
+
+.settings-content input,
+.test-content textarea {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    font-size: 12px;
+    margin: 8px 0;
+    font-family: 'Courier New', monospace;
+}
+
+.test-content textarea {
+    min-height: 120px;
+    background: #f8f8f8;
+}
+
+.settings-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.settings-row input {
+    flex: 1;
+    margin: 0;
+}
+
+.settings-note,
+.test-note {
+    font-size: 11px;
+    color: #999;
+    margin-top: 5px;
+}
+
+.test-content button {
+    width: 100%;
+    margin-top: 8px;
 }
 
 .settings-section {

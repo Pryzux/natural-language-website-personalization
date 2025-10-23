@@ -1,10 +1,10 @@
 from typing import List, Dict, Any, Optional, Union, Literal
 from pydantic import BaseModel, Field, field_validator
-import re
-
+from ..utils import sanitize_html
 
 # Safe jQuery methods (CSP-compatible, no event handlers with inline functions)
 SAFE_JQUERY_METHODS = [
+    
     # Traversal / Selection
     "find", "eq", "filter", "not", "parent", "children", "closest", "siblings",
     "next", "prev", "first", "last", "slice", "has", "add",
@@ -32,9 +32,8 @@ SAFE_JQUERY_METHODS = [
     "data", "removeData"
 ]
 
-
+# A single jQuery method call in a command chain
 class Command(BaseModel):
-    """A single jQuery method call in a command chain"""
     method: str = Field(..., description="jQuery method name")
     args: List[Union[str, int, float, bool, Dict[str, Any], None]] = Field(
         default_factory=list,
@@ -72,42 +71,8 @@ class Command(BaseModel):
 
         return sanitized
 
-
-def sanitize_html(html: str) -> str:
-    """
-    Sanitize HTML to prevent XSS attacks.
-
-    Removes:
-    - <script> tags and contents
-    - on* event attributes (onclick, onload, etc.)
-    - javascript: protocol in href/src
-    - data: URLs (potential XSS vector)
-
-    This is a basic sanitizer - for production, consider using a library like bleach.
-    """
-    if not html:
-        return html
-
-    # Remove <script> tags and contents
-    html = re.sub(r'<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>', '', html, flags=re.IGNORECASE)
-
-    # Remove on* event attributes
-    html = re.sub(r'\s+on\w+\s*=\s*["\'][^"\']*["\']', '', html, flags=re.IGNORECASE)
-    html = re.sub(r'\s+on\w+\s*=\s*[^\s>]+', '', html, flags=re.IGNORECASE)
-
-    # Remove javascript: protocol
-    html = re.sub(r'href\s*=\s*["\']javascript:[^"\']*["\']', '', html, flags=re.IGNORECASE)
-    html = re.sub(r'src\s*=\s*["\']javascript:[^"\']*["\']', '', html, flags=re.IGNORECASE)
-
-    # Remove data: URLs (can be used for XSS)
-    html = re.sub(r'href\s*=\s*["\']data:[^"\']*["\']', '', html, flags=re.IGNORECASE)
-    html = re.sub(r'src\s*=\s*["\']data:[^"\']*["\']', '', html, flags=re.IGNORECASE)
-
-    return html
-
-
+# A jQuery transformation with selector and command chain
 class Transformation(BaseModel):
-    """A jQuery transformation with selector and command chain"""
     selector: str = Field(..., description="jQuery selector to find target elements")
     commands: List[Command] = Field(..., min_length=1, description="jQuery methods to execute in sequence")
 
@@ -119,7 +84,6 @@ class Transformation(BaseModel):
             raise ValueError("Selector cannot be empty")
         return v.strip()
 
-
+# LLM response containing jQuery transformations
 class TransformationResponse(BaseModel):
-    """LLM response containing jQuery transformations"""
     transformations: List[Transformation] = Field(..., min_length=1)

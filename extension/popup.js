@@ -13,6 +13,8 @@ const statusDiv = document.getElementById('status');
 const lastTransformDiv = document.getElementById('lastTransform');
 const apiUrlInput = document.getElementById('apiUrl');
 const saveApiUrlBtn = document.getElementById('saveApiUrl');
+const testJsonInput = document.getElementById('testJson');
+const testBtn = document.getElementById('testBtn');
 const btnText = applyBtn.querySelector('.btn-text');
 const loader = applyBtn.querySelector('.loader');
 
@@ -161,6 +163,68 @@ saveApiUrlBtn.addEventListener('click', () => {
     chrome.storage.local.set({ apiUrl: url }, () => {
         showStatus('API URL saved', 'success');
     });
+});
+
+// Test transformations directly
+testBtn.addEventListener('click', async () => {
+    const jsonText = testJsonInput.value.trim();
+
+    if (!jsonText) {
+        showStatus('Please paste transformation JSON', 'error');
+        return;
+    }
+
+    try {
+        // Parse and validate JSON
+        const transformations = JSON.parse(jsonText);
+
+        if (!Array.isArray(transformations)) {
+            throw new Error('JSON must be an array of transformations');
+        }
+
+        // Validate structure
+        for (const t of transformations) {
+            if (!t.selector || !t.commands) {
+                throw new Error('Each transformation must have "selector" and "commands" fields');
+            }
+            if (!Array.isArray(t.commands)) {
+                throw new Error('"commands" must be an array');
+            }
+        }
+
+        showStatus('Applying test transformations...', 'info');
+
+        // Get current tab
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+        if (!tab) {
+            throw new Error('No active tab found');
+        }
+
+        // Send directly to content script
+        chrome.tabs.sendMessage(
+            tab.id,
+            {
+                action: 'applyTransformations',
+                transformations: transformations
+            },
+            (response) => {
+                if (chrome.runtime.lastError) {
+                    showStatus(`Error: ${chrome.runtime.lastError.message}`, 'error');
+                    return;
+                }
+
+                if (response && response.success) {
+                    showStatus(`✅ Applied ${transformations.length} test transformation(s)!`, 'success');
+                } else {
+                    showStatus('❌ Failed to apply transformations', 'error');
+                }
+            }
+        );
+
+    } catch (error) {
+        showStatus(`❌ Invalid JSON: ${error.message}`, 'error');
+    }
 });
 
 // Enter key to submit

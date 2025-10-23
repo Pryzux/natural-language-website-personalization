@@ -1,335 +1,189 @@
+"""
+LLM Service for generating DOM transformations.
+Project-specific orchestration layer that uses model providers.
+"""
 
 import os
-from typing import List, Dict, Any
-from openai import OpenAI
 import time
 import json
+from typing import Dict, Any, List
+from .models import OpenAIModel, AnthropicModel, BaseLLMModel
 from .types import TransformationResponse
 from api.types import TransformationRequest
 
 
-# OpenAI client (initialized lazily)
-_client = None
-
-MAX_HTML = 200000  # Sanitizer reduces to ~50KB, no need to truncate further
-
-
-def get_client():
-    """Get or create OpenAI client"""
-    global _client
-    if _client is None:
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            raise ValueError("OPENAI_API_KEY environment variable must be set")
-        _client = OpenAI(api_key=api_key)
-    return _client
-
-
 class LLMService:
-    """Service for generating DOM transformations using LLM with Structured Outputs"""
+    """Service for generating DOM transformations using LLM providers"""
 
-    def __init__(self, model: str = "gpt-4o"):
-        self.model = model
+    def __init__(self, max_html: int | None = None):
+        """
+        Initialize LLM Service
 
+        Args:
+            max_html: Maximum HTML characters to send from extension
+                     - None (default): No truncation
+                     - Integer: Truncate to this length
+                     - Defaults to MAX_HTML_LENGTH_FROM_EXTENSION env var if set
+
+        Required Environment Variables:
+            LLM_MODEL: "OpenAI" or "Anthropic"
+            LLM_VERSION: Model version (e.g., "gpt-4o", "claude-3-5-sonnet-20241022")
+            LLM_API_KEY: API key for the provider
+        """
+        # Get required env vars
+        llm_model = os.getenv("LLM_MODEL")
+        llm_version = os.getenv("LLM_VERSION")
+        llm_api_key = os.getenv("LLM_API_KEY")
+
+        if not llm_model:
+            raise ValueError("LLM_MODEL environment variable must be set to 'OpenAI' or 'Anthropic'")
+        if not llm_version:
+            raise ValueError("LLM_VERSION environment variable must be set (e.g., 'gpt-4o', 'claude-3-5-sonnet-20241022')")
+        if not llm_api_key:
+            raise ValueError("LLM_API_KEY environment variable must be set")
+
+        # Initialize the appropriate model
+        self.model = self._create_model(llm_model, llm_api_key, llm_version)
+
+        # Configure HTML truncation
+        if max_html is not None:
+            self.max_html = max_html
+        else:
+            env_val = os.getenv("MAX_HTML_LENGTH_FROM_EXTENSION")
+            if env_val and env_val.lower() != "none":
+                self.max_html = int(env_val)
+            else:
+                self.max_html = None
+
+        max_html_display = self.max_html if self.max_html is not None else "unlimited"
+        print(f"[LLM Service] Initialized with provider={self.model.provider_name}, model={self.model.model_version}, max_html_from_extension={max_html_display}")
+
+    def _create_model(self, provider: str, api_key: str, version: str) -> BaseLLMModel:
+        """
+        Factory method to create the appropriate model instance
+
+        Args:
+            provider: "OpenAI" or "Anthropic"
+            api_key: API key for the provider
+            version: Model version string
+
+        Returns:
+            BaseLLMModel: Initialized model instance
+        """
+        provider_lower = provider.lower()
+
+        if provider_lower == "openai":
+            return OpenAIModel(api_key=api_key, model_version=version)
+        elif provider_lower == "anthropic":
+            return AnthropicModel(api_key=api_key, model_version=version)
+        else:
+            raise ValueError(f"LLM_MODEL must be 'OpenAI' or 'Anthropic', got: {provider}")
 
     def generate_transformations(self, request: TransformationRequest) -> Dict[str, Any]:
         """
         Generate DOM transformations from user prompt and page context.
 
+        This is the main project-specific orchestration method that:
+        1. Builds prompts with project context
+        2. Calls the model provider
+        3. Validates and parses responses
+        4. Times the operation
+        5. Handles errors
+
         Returns:
+            Dict containing:
                 - 'transformations': list of transformation objects with command chains
                 - 'llm_messages': messages sent to LLM (for debugging)
                 - 'llm_response': parsed response from LLM (for debugging)
         """
+        # Load system prompt from file
+        system_prompt = self._load_system_prompt()
 
-        system_prompt = self._build_system_prompt()
-        user_message_content = self._build_user_message(request.prompt, request.html, request.screenshot, request.url)
+        user_message_content = self._build_user_message(
+            request.prompt,
+            request.html,
+            request.screenshot,
+            request.url
+        )
 
         try:
-            # Build messages
-            messages = [ {"role": "system", "content": system_prompt}, {"role": "user", "content": user_message_content} ]
-
-            client = get_client()
-
+            # Time the API call
             api_start = time.time()
-            print(f"[LLM Service] Calling OpenAI API (using regular JSON mode for speed)...")
+            print(f"[LLM Service] Calling {self.model.provider_name} API with model {self.model.model_version}...")
 
-            # Use regular JSON mode instead of Structured Outputs - faster!
-            response = client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                response_format={"type": "json_object"},
+            # Call the model provider
+            result_text = self.model.generate_completion(
+                system_prompt=system_prompt,
+                user_message=user_message_content,
                 temperature=0.3
             )
 
-            print(f"[LLM Service] API responded in {time.time() - api_start:.2f}s")
+            api_duration = time.time() - api_start
+            print(f"[LLM Service] API responded in {api_duration:.2f}s")
 
-            # Parse and validate with Pydantic
-            result_text = response.choices[0].message.content
+            # Parse and validate the response
             result_dict = json.loads(result_text)
-
-            # Validate using Pydantic
             validated = TransformationResponse(**result_dict)
             transformations_dict = validated.model_dump()
 
             print(f"[LLM Service] Generated {len(transformations_dict['transformations'])} transformations")
 
-            # Return transformations along with debugging info
+            # Build debug messages in standard format
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message_content}
+            ]
+
             return {
                 "transformations": transformations_dict["transformations"],
                 "llm_messages": messages,
                 "llm_response": transformations_dict
             }
 
+        except json.JSONDecodeError as e:
+            print(f"[LLM Service] JSON parsing error: {str(e)}")
+            print(f"[LLM Service] Raw response: {result_text[:500]}...")
+            raise ValueError(f"Failed to parse LLM response as JSON: {str(e)}")
+
         except Exception as e:
             print(f"[LLM Service] Error generating transformations: {str(e)}")
             print(f"[LLM Service] Error type: {type(e).__name__}")
 
-            # If it's a Pydantic validation error, show more details
-            from pydantic import ValidationError
-            if isinstance(e, ValidationError):
-                print(f"[LLM Service] Validation errors: {e.errors()}")
+            # Show validation errors if it's a Pydantic error
+            try:
+                from pydantic import ValidationError
+                if isinstance(e, ValidationError):
+                    print(f"[LLM Service] Validation errors: {e.errors()}")
+            except ImportError:
+                pass
 
             raise
 
+    def _load_system_prompt(self) -> str:
+        """Load system prompt from system_prompt.txt file"""
+        from pathlib import Path
 
-    def _build_system_prompt(self) -> str:
-        return """You are a jQuery transformation planner for declarative webpage modifications.
+        # Get path to system_prompt.txt (in llm directory)
+        prompt_path = Path(__file__).parent / "system_prompt.txt"
 
-        You receive:
-        1. A HTML snapshot of the page's DOM structure
-        2. A screenshot of a section of the page
-        3. A natural-language instruction from the user describing what they want changed.
+        if not prompt_path.exists():
+            raise FileNotFoundError(
+                f"system_prompt.txt not found at {prompt_path}. "
+                "Please create this file with your system prompt."
+            )
 
-        Your job is t, based off the Instruction from the user, HTML and Page Snapshots, generate jQuery command chains that fulfill the user's intent using only the subset of jQuery methods available to you.
+        with open(prompt_path, 'r') as f:
+            return f.read()
 
-       
-        - Express transformations as declarative JSON (selector + command chain)
-        - Use ONLY the safe jQuery methods listed below (no event handlers with inline functions)
-        - Examine the HTML to find tags, attributes, aria-labels, and structure
-
-
-        ## Output Format
-
-        Return a JSON object with this shape:
-
-        ```json
-        {
-          "transformations": [
-            {
-              "selector": "button[aria-label*='Like']",
-              "commands": [
-                { "method": "hide", "args": [] }
-              ]
-            }
-          ]
-        }
-        ```
-
-        **Structure:**
-        - `selector`: jQuery selector to find target elements
-        - `commands`: Array of jQuery methods to execute in sequence (chained)
-
-        Note: Do NOT include a description field. Only selector and commands.
-
-        ---
-
-        ## Safe jQuery Methods (Your Complete Toolkit)
-
-        You can ONLY use these methods. Each method is called on the selected elements and can be chained as much as you need.
-
-        ### Traversal / Selection
-        | Method | Args | Description | Example |
-        |--------|------|-------------|---------|
-        | `find` | `selector: string` | Find descendant elements | `{ "method": "find", "args": [".title"] }` |
-        | `eq` | `index: number` | Select element at index | `{ "method": "eq", "args": [0] }` |
-        | `filter` | `selector: string` | Filter current selection | `{ "method": "filter", "args": [":visible"] }` |
-        | `not` | `selector: string` | Exclude matching elements | `{ "method": "not", "args": [".keep"] }` |
-        | `parent` | (none) | Select parent element | `{ "method": "parent", "args": [] }` |
-        | `children` | (none) | Select child elements | `{ "method": "children", "args": [] }` |
-        | `closest` | `selector: string` | Find closest ancestor | `{ "method": "closest", "args": ["article"] }` |
-        | `siblings` | (none) | Select siblings | `{ "method": "siblings", "args": [] }` |
-        | `next` | (none) | Next sibling | `{ "method": "next", "args": [] }` |
-        | `prev` | (none) | Previous sibling | `{ "method": "prev", "args": [] }` |
-        | `first` | (none) | First in set | `{ "method": "first", "args": [] }` |
-        | `last` | (none) | Last in set | `{ "method": "last", "args": [] }` |
-        | `slice` | `start: number, end?: number` | Subset of elements | `{ "method": "slice", "args": [0, 5] }` |
-        | `has` | `selector: string` | Filter by contained elements | `{ "method": "has", "args": ["a"] }` |
-        | `add` | `selector: string` | Add elements to set | `{ "method": "add", "args": [".more"] }` |
-
-        ### DOM Manipulation
-        | Method | Args | Description | Example |
-        |--------|------|-------------|---------|
-        | `append` | `content: string` | Append HTML to end | `{ "method": "append", "args": ["<div>New</div>"] }` |
-        | `prepend` | `content: string` | Prepend HTML to start | `{ "method": "prepend", "args": ["<span>First</span>"] }` |
-        | `before` | `content: string` | Insert HTML before | `{ "method": "before", "args": ["<hr>"] }` |
-        | `after` | `content: string` | Insert HTML after | `{ "method": "after", "args": ["<br>"] }` |
-        | `remove` | (none) | Remove from DOM | `{ "method": "remove", "args": [] }` |
-        | `empty` | (none) | Remove child nodes | `{ "method": "empty", "args": [] }` |
-        | `replaceWith` | `content: string` | Replace with HTML | `{ "method": "replaceWith", "args": ["<div>New</div>"] }` |
-        | `wrap` | `html: string` | Wrap each element | `{ "method": "wrap", "args": ["<div class='wrapper'></div>"] }` |
-        | `unwrap` | (none) | Remove parent wrapper | `{ "method": "unwrap", "args": [] }` |
-        | `clone` | (none) | Clone elements | `{ "method": "clone", "args": [] }` |
-
-        ### Attributes & Properties
-        | Method | Args | Description | Example |
-        |--------|------|-------------|---------|
-        | `attr` | `name: string, value: string` OR `{key: val}` | Set attribute(s) | `{ "method": "attr", "args": [{"href": "#", "target": "_blank"}] }` |
-        | `removeAttr` | `name: string` | Remove attribute | `{ "method": "removeAttr", "args": ["disabled"] }` |
-        | `prop` | `name: string, value: any` OR `{key: val}` | Set property | `{ "method": "prop", "args": [{"checked": true}] }` |
-        | `removeProp` | `name: string` | Remove property | `{ "method": "removeProp", "args": ["checked"] }` |
-        | `val` | `value?: string` | Get/set form value | `{ "method": "val", "args": ["new value"] }` |
-
-        ### Classes
-        | Method | Args | Description | Example |
-        |--------|------|-------------|---------|
-        | `addClass` | `className: string` | Add class(es) | `{ "method": "addClass", "args": ["active highlight"] }` |
-        | `removeClass` | `className: string` | Remove class(es) | `{ "method": "removeClass", "args": ["hidden"] }` |
-        | `toggleClass` | `className: string` | Toggle class | `{ "method": "toggleClass", "args": ["expanded"] }` |
-
-        ### CSS & Style
-        | Method | Args | Description | Example |
-        |--------|------|-------------|---------|
-        | `css` | `property: string, value: string` OR `{prop: val}` | Set CSS | `{ "method": "css", "args": [{"color": "red", "font-size": "20px"}] }` |
-        | `height` | `value?: number` | Get/set height | `{ "method": "height", "args": [100] }` |
-        | `width` | `value?: number` | Get/set width | `{ "method": "width", "args": [200] }` |
-
-        ### Content
-        | Method | Args | Description | Example |
-        |--------|------|-------------|---------|
-        | `text` | `value: string` | Set text content | `{ "method": "text", "args": ["New text"] }` |
-        | `html` | `value: string` | Set HTML content | `{ "method": "html", "args": ["<b>Bold</b>"] }` |
-
-        ### Visibility
-        | Method | Args | Description | Example |
-        |--------|------|-------------|---------|
-        | `show` | (none) | Display element | `{ "method": "show", "args": [] }` |
-        | `hide` | (none) | Hide element | `{ "method": "hide", "args": [] }` |
-        | `toggle` | (none) | Toggle visibility | `{ "method": "toggle", "args": [] }` |
-
-        ### Data Attributes
-        | Method | Args | Description | Example |
-        |--------|------|-------------|---------|
-        | `data` | `key: string, value: any` | Set data attribute | `{ "method": "data", "args": ["state", "active"] }` |
-        | `removeData` | `key: string` | Remove data attribute | `{ "method": "removeData", "args": ["state"] }` |
-
-        ---
-
-        ## jQuery Selector Capabilities
-
-        You have the FULL power of jQuery selectors, including but not limited to:
-
-        **Standard CSS:**
-        - Tags: `article`, `div`, `button`, `a`
-        - Attributes: `[href='/user']`, `[data-testid='tweet']`, `[aria-label*='Like']`
-        - Classes/IDs: `.classname`, `#id`
-        - Combinators: `parent > child`, `parent child`
-
-        **jQuery Extensions (NOT in standard CSS):**
-        - `:contains('text')` - Elements containing specific text
-          - Example: `article:contains('Ad')` - Articles with "Ad" text
-        - `:has(selector)` - Elements containing selector
-          - Example: `article:has(a[href='/elonmusk'])` - Articles with link to /elonmusk
-        - `:not(selector)` - Inverse selection
-          - Example: `button:not(.keep)` - Buttons without "keep" class
-        - `:visible`, `:hidden` - Visibility filtering
-        - `:first`, `:last`, `:even`, `:odd` - Position filtering
-
-        **Combining:**
-        - `article:has(div:contains('Ad'))` - Articles containing div with "Ad"
-        - `button[aria-label*='Like']:visible` - Visible like buttons
-        - `.post:not(:has(.verified))` - Posts without verified badge
-
-        ---
-
-        ## Command Chaining Examples
-
-        Commands execute in sequence on the selected elements. Think of it like jQuery chaining.
-
-        ### Example 1: Hide posts from specific user (1 chain)
-        ```json
-        {
-          "selector": "article:has(a[href='/elonmusk'])",
-          "commands": [
-            { "method": "hide", "args": [] }
-          ]
-        }
-        ```
-
-        Equivalent jQuery: `$("article:has(a[href='/elonmusk'])").hide();`
-
-        ### Example 2: Style and modify post titles (3 Chains)
-        ```json
-        {
-          "selector": ".post",
-          "commands": [
-            { "method": "find", "args": [".title"] },
-            { "method": "css", "args": [{"color": "red", "font-weight": "bold"}] },
-            { "method": "addClass", "args": ["highlighted"] }
-          ]
-        }
-        ```
-
-        Equivalent jQuery: `$(".post").find(".title").css({color: "red", "font-weight": "bold"}).addClass("highlighted");`
-
-        ### Example 3: Hide advertisements by text content
-        ```json
-        {
-          "selector": "article:contains('Ad'), article:contains('Promoted')",
-          "commands": [
-            { "method": "hide", "args": [] }
-          ]
-        }
-        ```
-
-        Equivalent jQuery: `$("article:contains('Ad'), article:contains('Promoted')").hide();`
-
-        ### Example 4: Complex traversal and modification
-        ```json
-        {
-          "selector": "article[data-promoted='true']",
-          "commands": [
-            { "method": "find", "args": [".content"] },
-            { "method": "first", "args": [] },
-            { "method": "prepend", "args": ["<span style='color:red;'>Sponsored</span>"] }
-          ]
-        }
-        ```
-
-        Equivalent jQuery: `$("article[data-promoted='true']").find(".content").first().prepend("<span style='color:red;'>Sponsored</span>");`
-
-        ---
-
-        ## Important Notes
-
-        1. **Examine the HTML:** Always look at the provided HTML to construct accurate selectors
-        2. **Chain methods:** Commands execute in sequence - use traversal methods to navigate the DOM
-        3. **Text filtering:** Use `:contains()` to filter by text content (jQuery extension, not standard CSS)
-        4. **Structure filtering:** Use `:has()` to filter by contained elements
-        5. **HTML is sanitized:** The system automatically removes `<script>` tags and `on*` attributes from your HTML arguments
-        6. **Think jQuery:** You're writing jQuery transformations, just in JSON format
-        7. **Prefer hide() over remove():** For dynamic sites (Twitter, Facebook, etc.), use `hide()` instead of `remove()` to avoid breaking the page's JavaScript framework
-
-        ---
-
-        ## How to Think
-
-        1. **Understand intent:** What visual/structural effect should happen?
-        2. **Inspect HTML and Image:** Which elements/attributes represent what the user described?
-        3. **Build selector:** Construct a jQuery selector to find those elements
-        4. **Plan commands:** What jQuery methods achieve the desired effect?
-
-        **Example thought process for "hide ads":**
-        1. Intent: Remove visibility of advertisement elements
-        2. HTML and Image inspection: Ads might have text "Ad" or "Promoted" or attribute `data-promoted`
-        3. Selector: `article:contains('Ad'), article:contains('Promoted'), article[data-promoted]`
-
-        Return only valid JSON matching the structure shown above.
-        """
-
-
-    def _build_user_message(self, prompt: str, html: str, screenshot_base64: str, url: str | None = None) -> List[Dict[str, Any]]:
-        """Build user message with text context and screenshot. """
+    def _build_user_message(
+        self,
+        prompt: str,
+        html: str,
+        screenshot_base64: str,
+        url: str | None = None
+    ) -> List[Dict[str, Any]]:
+        
+        """Build user message with HTML and screenshot"""
 
         # Detect Twitter and sanitize
         if url and ('twitter.com' in url or 'x.com' in url):
@@ -350,7 +204,7 @@ class LLMService:
         {url or 'Not provided'}
 
         **Page HTML:**
-        {html[:MAX_HTML]}
+        {html if self.max_html is None else html[:self.max_html]}
 
        """
 
@@ -371,4 +225,15 @@ class LLMService:
         return content
 
 
-llm_service = LLMService()
+# Global service instance (lazy-loaded)
+_llm_service_instance = None
+
+def get_llm_service() -> LLMService:
+    """Get or create the global LLM service instance"""
+    global _llm_service_instance
+    if _llm_service_instance is None:
+        _llm_service_instance = LLMService()
+    return _llm_service_instance
+
+# For backward compatibility
+llm_service = None  # Will be lazily initialized on first access

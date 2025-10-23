@@ -1,9 +1,3 @@
-"""
-API Types
-
-Request and response models for the API.
-"""
-
 from typing import Optional
 from pydantic import BaseModel, Field
 

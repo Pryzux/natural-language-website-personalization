@@ -70,17 +70,48 @@ async function generateTransformations(prompt, pageContext, apiUrl) {
 }
 
 /**
+ * Check if content script is ready
+ */
+async function ensureContentScriptReady(tabId) {
+    try {
+        const response = await chrome.tabs.sendMessage(tabId, { action: 'ping' });
+        return response && response.success;
+    } catch (error) {
+        return false;
+    }
+}
+
+/**
  * Apply transformations to the page by sending to content script
  */
 async function applyTransformations(tabId, transformations) {
     try {
+        console.log('[Background] Checking if content script is ready...');
+
+        // Check if content script is ready, retry if needed
+        let isReady = await ensureContentScriptReady(tabId);
+
+        if (!isReady) {
+            console.log('[Background] Content script not ready, retrying...');
+            await new Promise(resolve => setTimeout(resolve, 500));
+            isReady = await ensureContentScriptReady(tabId);
+        }
+
+        if (!isReady) {
+            throw new Error('Content script is not responding. Please refresh the page and try again.');
+        }
+
         console.log('[Background] Sending transformations to content script');
 
         // Send transformations to content script
-        await chrome.tabs.sendMessage(tabId, {
+        const response = await chrome.tabs.sendMessage(tabId, {
             action: 'applyTransformations',
             transformations: transformations
         });
+
+        if (!response || !response.success) {
+            throw new Error('Failed to apply transformations');
+        }
 
         console.log('[Background] Transformations applied successfully');
         return true;
@@ -117,7 +148,7 @@ async function saveTransformation(url, transformationData) {
 /**
  * Handle messages from popup
  */
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message.action === 'apply_transformation') {
         (async () => {
             try {

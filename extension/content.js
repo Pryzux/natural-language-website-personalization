@@ -10,50 +10,79 @@
     let currentTransformations = null;
 
     /**
+     * Normalize selector string:
+     * - Remove accidental wrapping quotes
+     * - Unescape double-encoded JSON strings
+     */
+    function normalizeSelector(selector) {
+        if (!selector || typeof selector !== 'string') return selector;
+        // Unescape escaped quotes like \" or \'
+        let s = selector.replace(/^["']|["']$/g, '');
+        s = s.replace(/\\"/g, '"').replace(/\\'/g, "'");
+        return s.trim();
+    }
+
+    /**
+     * Safe jQuery selector executor
+     */
+    function safeSelect(selector) {
+        try {
+            return $(selector);
+        } catch (err) {
+            console.error(`[AI Customizer] Invalid jQuery selector: ${selector}`, err);
+            return $(); // empty jQuery set
+        }
+    }
+
+    /**
      * Execute a single transformation (selector + command chain)
      */
     function executeTransformation(transformation) {
-        const { selector, commands } = transformation;
+        let { selector, commands } = transformation;
+        selector = normalizeSelector(selector);
 
         try {
-            console.log(`[AI Customizer] Executing: ${selector}`);
 
-            // Start with jQuery selection
-            let $elements = $(selector);
+            // Attempt jQuery selection safely
+            let $elements = safeSelect(selector);
 
-            if ($elements.length === 0) {
-                // Don't spam console if no elements found during periodic reapplication
-                return;
+            // If not found, fallback for :contains()
+            if ($elements.length === 0 && selector.includes(":contains(")) {
+                const match = selector.match(/:contains\(['"](.+?)['"]\)/);
+                const text = match ? match[1] : null;
+                if (text) {
+                    $elements = $('*').filter(function() {
+                        return $(this).text().includes(text);
+                    });
+                }
             }
 
-            console.log(`[AI Customizer] Found ${$elements.length} element(s) for: ${selector}`);
+            if ($elements.length === 0) {
+                return; // Skip silently if nothing found
+            }
+
+     
 
             // Execute command chain
             commands.forEach((cmd, idx) => {
                 const { method, args = [] } = cmd;
 
                 if (typeof $elements[method] !== 'function') {
-                    console.error(`[AI Customizer] Unknown jQuery method: ${method}`);
                     return;
                 }
 
                 try {
-                    // Execute method and update $elements for chaining
                     const result = $elements[method](...args);
-
-                    // Update $elements if method returns jQuery object (for chaining)
                     if (result && result.jquery) {
-                        $elements = result;
+                        $elements = result; // Chain if applicable
                     }
-
-                    console.log(`[AI Customizer]   [${idx + 1}/${commands.length}] ${method}(${JSON.stringify(args).substring(0, 50)}...)`);
                 } catch (error) {
-                    console.error(`[AI Customizer] Error executing ${method}:`, error);
+                   
                 }
             });
 
         } catch (error) {
-            console.error(`[AI Customizer] Error in transformation with selector "${selector}":`, error);
+       
         }
     }
 
@@ -61,10 +90,8 @@
      * Apply all transformations
      */
     function applyTransformations(transformations) {
-        console.log('[AI Customizer] Applying transformations:', transformations);
 
         if (!transformations || transformations.length === 0) {
-            console.warn('[AI Customizer] No transformations provided');
             return;
         }
 
@@ -76,7 +103,7 @@
         });
 
         window.__aiCustomizerActive = true;
-        console.log('[AI Customizer] All transformations complete');
+      
     }
 
     /**
@@ -112,9 +139,7 @@
      * Start periodic reapplication
      */
     function startPeriodicReapplication() {
-        if (reapplyInterval) {
-            clearInterval(reapplyInterval);
-        }
+        if (reapplyInterval) clearInterval(reapplyInterval);
 
         loadAndApplyCached();
 
@@ -122,9 +147,9 @@
             if (currentTransformations) {
                 applyTransformations(currentTransformations);
             }
-        }, 2000);
+        }, 500);
 
-        console.log('[AI Customizer] Started periodic reapplication (every 2s)');
+     
     }
 
     /**
@@ -145,7 +170,6 @@
         const domain = getCurrentDomain();
         if (!domain) return;
 
-        // Check if jQuery is available
         if (typeof $ === 'undefined') {
             console.error('[AI Customizer] jQuery not loaded! Transformations will not work.');
             return;
@@ -170,10 +194,8 @@
         console.log('[AI Customizer] Message received:', message.action);
 
         if (message.action === 'ping') {
-            console.log('[AI Customizer] Ping received');
             sendResponse({ success: true });
         } else if (message.action === 'applyTransformations') {
-            console.log('[AI Customizer] Applying transformations');
             applyTransformations(message.transformations);
             startPeriodicReapplication();
             sendResponse({ success: true });
@@ -199,3 +221,4 @@
 
     console.log('[AI Customizer] Content script loaded');
 })();
+
