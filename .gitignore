@@ -46,7 +46,10 @@ package-lock.json
 yarn.lock
 
 # Testing/Debug data
-/backend/requests
+/backend/requests/*
+!/backend/requests/
+!/backend/requests/save_requests.py
+!/backend/requests/print_requests.py
 /backend/test_*.py
 *.test.json
 

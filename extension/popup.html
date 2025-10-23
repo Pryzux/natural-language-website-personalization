@@ -47,6 +47,27 @@
                 </details>
 
                 <details>
+                    <summary>🧪 Test Transformations</summary>
+                    <div class="test-content">
+                        <label for="testJson">Paste transformation JSON:</label>
+                        <textarea
+                            id="testJson"
+                            placeholder='[
+  {
+    "selector": "body",
+    "commands": [
+      {"method": "css", "args": [{"background-color": "red"}]}
+    ]
+  }
+]'
+                            rows="8"
+                        ></textarea>
+                        <button id="testBtn" class="secondary-btn">Test Transformations</button>
+                        <p class="test-note">💡 Paste raw transformation array to test without calling the backend</p>
+                    </div>
+                </details>
+
+                <details>
                     <summary>⚙️ Settings</summary>
                     <div class="settings-content">
                         <label for="apiUrl">Backend URL:</label>

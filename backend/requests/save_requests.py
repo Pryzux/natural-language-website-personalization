@@ -15,9 +15,16 @@ from datetime import datetime
 class RequestSaver:
     """Handles saving request data to disk"""
 
-    def __init__(self, base_path: str = "requests"):
-        """ Initialize RequestSaver """
-        self.base_path = os.path.join(os.path.dirname(__file__), base_path)
+    def __init__(self, base_path: str = None):
+        """ Initialize RequestSaver
+
+        base_path defaults to the directory containing this file (backend/requests/)
+        """
+        if base_path is None:
+            # Script is in backend/requests/, so use current directory
+            self.base_path = os.path.dirname(__file__)
+        else:
+            self.base_path = os.path.join(os.path.dirname(__file__), base_path)
 
     def _get_next_request_dir(self, domain: str) -> tuple[str, int]:
         """Find the next available request directory for a domain."""

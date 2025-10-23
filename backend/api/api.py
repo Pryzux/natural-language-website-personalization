@@ -1,12 +1,16 @@
+import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
-from transform.llm import llm_service
-from save_requests import request_saver
+from transform.llm.llm_service import get_llm_service
+from requests.save_requests import request_saver
 from .types import TransformationRequest
 
 # Load environment variables
 load_dotenv()
+
+# Check if request saving is enabled
+SAVE_REQUESTS = os.getenv("SAVE_REQUESTS", "false").lower() == "true"
 
 # Initialize
 app = FastAPI(
@@ -54,6 +58,7 @@ async def generate_transformations(request: TransformationRequest):
             raise HTTPException(status_code=400, detail="Screenshot is required for generating transformations")
 
         # Call LLM service with request object
+        llm_service = get_llm_service()
         result = llm_service.generate_transformations(request)
 
         # Extract transformations and debugging info
@@ -77,17 +82,18 @@ async def generate_transformations(request: TransformationRequest):
             "selectors": selectors
         }
 
-        # Save request data with all debugging information
-        request_saver.save_transformation_request(
-            prompt=request.prompt,
-            html=request.html,
-            screenshot=request.screenshot,
-            transformations=transformations,
-            url=request.url,
-            llm_messages=llm_messages,
-            llm_response=llm_response,
-            extension_response=extension_response
-        )
+        # Save request data with all debugging information (if enabled)
+        if SAVE_REQUESTS:
+            request_saver.save_transformation_request(
+                prompt=request.prompt,
+                html=request.html,
+                screenshot=request.screenshot,
+                transformations=transformations,
+                url=request.url,
+                llm_messages=llm_messages,
+                llm_response=llm_response,
+                extension_response=extension_response
+            )
 
         return extension_response
 
