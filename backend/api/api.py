@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from transform.llm.llm_service import get_llm_service
 from requests.save_requests import request_saver
+from sanitize import sanitize_request
 from .types import TransformationRequest
 
 # Load environment variables
@@ -57,9 +58,12 @@ async def generate_transformations(request: TransformationRequest):
         if not request.screenshot:
             raise HTTPException(status_code=400, detail="Screenshot is required for generating transformations")
 
-        # Call LLM service with request object
+        # Sanitize request based on domain
+        sanitized_request = sanitize_request(request)
+
+        # Call LLM service with sanitized request
         llm_service = get_llm_service()
-        result = llm_service.generate_transformations(request)
+        result = llm_service.generate_transformations(sanitized_request)
 
         # Extract transformations and debugging info
         transformations = result.get("transformations", [])

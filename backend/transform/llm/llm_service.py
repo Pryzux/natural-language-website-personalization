@@ -182,17 +182,7 @@ class LLMService:
         screenshot_base64: str,
         url: str | None = None
     ) -> List[Dict[str, Any]]:
-        
         """Build user message with HTML and screenshot"""
-
-        # Detect Twitter and sanitize
-        if url and ('twitter.com' in url or 'x.com' in url):
-            from ..twitter_sanitizer import sanitize_twitter_html
-            original_size = len(html)
-            html = sanitize_twitter_html(html)
-            sanitized_size = len(html)
-            reduction = (1 - sanitized_size/original_size) * 100
-            print(f"[LLM Service] Sanitized Twitter HTML: {original_size:,} → {sanitized_size:,} bytes ({reduction:.1f}% reduction)")
 
         content = []
 
