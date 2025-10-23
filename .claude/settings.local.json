@@ -5,7 +5,8 @@
       "Bash(kill:*)",
       "Bash(tree:*)",
       "Bash(python -m uvicorn:*)",
-      "Bash(./start_server.sh:*)"
+      "Bash(./start_server.sh:*)",
+      "WebFetch(domain:api.jquery.com)"
     ],
     "deny": [],
     "ask": []

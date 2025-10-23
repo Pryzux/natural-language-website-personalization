@@ -1,14 +1,14 @@
 # Chrome Extension Design Document
 
-## LLM-Driven DOM Personalization via Action Map + jQuery Selectors
+## LLM-Driven DOM Personalization via Command Chains
 
 ---
 
 ### **1. Overview**
 
-This document describes the design for a Chrome extension that allows users to personalize webpages using natural language prompts. The system captures the page's DOM structure, screenshot, and the user prompt, and sends these to a backend service that uses an LLM to generate structured jQuery selector-based transformations.
+This document describes the design for a Chrome extension that allows users to personalize webpages using natural language prompts. The system captures the page's DOM structure, screenshot, and the user prompt, and sends these to a backend service that uses an LLM to generate structured jQuery-like command chains.
 
-The transformations are categorized under predefined **action types** (e.g., `color`, `text`) and are applied safely and continuously by the extension.
+The LLM has full freedom to generate any combination of jQuery commands needed to achieve the user's intent, from simple CSS changes to complex thematic transformations.
 
 ---
 
@@ -16,8 +16,9 @@ The transformations are categorized under predefined **action types** (e.g., `co
 
 * Enable natural-language customization of arbitrary web pages.
 * Use LLMs to interpret HTML and visual context into concrete DOM modifications.
-* Generate structured, safe, and repeatable transformations using jQuery selectors.
-* Apply these transformations in real time and persist them across sessions.
+* Generate structured, safe command chains using jQuery-like operations.
+* Apply transformations in real time and persist them across sessions.
+* Support complex thematic transformations (e.g., "beach theme") with coordinated changes.
 
 ---
 
@@ -75,78 +76,105 @@ Extension → Apply Transformations via jQuery
 ### **6. Data Schemas**
 
 Backend Post Endpoint ({Screenshot, Dom, prompt})
-Actions defined in backend
 
 #### **6.1 Input Schema (to LLM)**
 
 ```json
 {
-  "prompt": "Make the background green",
+  "prompt": "Make the background green and add a welcome message",
   "html": "<html>...</html>",
   "screenshot": "<base64_image>",
-  "actions": ["color", "text", "layout", "visibility", "style"]
+  "url": "https://example.com"
 }
 ```
 
-#### **6.2 Output Schema (from LLM)**
+#### **6.2 Output Schema (from LLM) - Command Chain Architecture**
 
 ```json
 {
   "transformations": [
     {
-      "selector": "body",
-      "action": "color",
-      "params": { "background-color": "green" }
-    },
-    {
-      "selector": "h1.title, h2.title",
-      "action": "text",
-      "params": { "replace": "Welcome to My Blog" }
+      "description": "Apply green background and add welcome message",
+      "commands": [
+        {
+          "selector": "body",
+          "method": "css",
+          "args": [{"background-color": "green"}]
+        },
+        {
+          "selector": "body",
+          "method": "prepend",
+          "args": ["<h1>Welcome!</h1>"]
+        },
+        {
+          "selector": "h1",
+          "method": "css",
+          "args": [{"color": "white", "text-align": "center"}]
+        }
+      ]
     }
   ]
 }
 ```
 
-#### **6.3 Transformation Schema**
+#### **6.3 Command Schema (Pydantic)**
 
-```typescript
-interface Transformation {
-  selector: string;            // CSS or jQuery selector
-  action: ActionType;          // One of the predefined actions
-  params: Record<string, any>; // Key-value pairs for properties
-}
+```python
+class Command(BaseModel):
+    selector: str  # CSS selector
+    method: str    # jQuery method (css, addClass, append, etc.)
+    args: List[Union[str, Dict[str, Any]]]  # Method arguments
+
+class Transformation(BaseModel):
+    description: str  # Human-readable description
+    commands: List[Command]  # Commands executed in sequence
+
+class TransformationResponse(BaseModel):
+    transformations: List[Transformation]
 ```
 
-#### **6.4 ActionType Enum**
+#### **6.4 Available Methods**
 
-```typescript
-type ActionType = 'color' | 'text' | 'layout' | 'visibility' | 'style';
-```
+- **CSS**: css, addClass, removeClass, toggleClass
+- **Content**: text, html, empty, val
+- **Attributes**: attr, removeAttr, data
+- **DOM**: append, prepend, after, before, wrap, unwrap, replaceWith, remove, clone
+- **Visibility**: show, hide, toggle, fadeIn, fadeOut
 
 ---
 
-### **7. Action Execution (Client-Side)**
+### **7. Command Execution (Client-Side)**
 
-Each action type maps to a handler function:
-
-```js
-const actionHandlers = {
-  color: (selector, params) => $(selector).css(params),
-  text: (selector, params) => $(selector).text(params.replace),
-  visibility: (selector, params) => $(selector).css('display', params.display),
-  style: (selector, params) => $(selector).css(params),
-  layout: (selector, params) => $(selector).css(params),
-};
-```
-
-Execution:
+Each command is executed using vanilla JavaScript:
 
 ```js
-function applyTransformations(data) {
-  data.transformations.forEach(t => {
-    if (actionHandlers[t.action]) {
-      actionHandlers[t.action](t.selector, t.params);
+function executeCommand(cmd) {
+  const { selector, method, args = [] } = cmd;
+  const elements = document.querySelectorAll(selector);
+
+  elements.forEach(el => {
+    switch(method) {
+      case 'css':
+        Object.assign(el.style, args[0]);
+        break;
+      case 'addClass':
+        el.classList.add(args[0]);
+        break;
+      case 'text':
+        el.textContent = args[0];
+        break;
+      case 'append':
+        el.insertAdjacentHTML('beforeend', sanitizeHTML(args[0]));
+        break;
+      // ... (many more methods)
     }
+  });
+}
+
+function applyTransformations(transformations) {
+  transformations.forEach(transform => {
+    console.log(transform.description);
+    transform.commands.forEach(executeCommand);
   });
 }
 ```
@@ -155,41 +183,40 @@ function applyTransformations(data) {
 
 ### **8. LLM Prompt Template**
 
-#### **System Prompt (Use Structured Output Here)**
+#### **System Prompt (Uses OpenAI Structured Outputs with Pydantic)**
 
 ```
-You are a web page personalization assistant.
+You are a web page personalization assistant that generates jQuery command chains.
 
-Given (HTML, Screenshot, Prompt, and the list of valid Actions), generate structured JSON describing jQuery selector-based actions that will modify the page according to the user’s intent.
+**Your Task:**
+Analyze the HTML, screenshot, and user request, then generate jQuery command chains
+that achieve the user's desired changes.
 
-Rules:
-- Output JSON only, no text or explanations.
-- Each transformation object must contain:
-  { "selector": "...", "action": one of [color, text, layout, visibility, style], "params": {...} }
-- Use concise and specific selectors that generalize well.
-- Do not include scripts or event handlers; only safe DOM/style changes.
+**Available Methods:**
+- CSS: css, addClass, removeClass, toggleClass
+- Content: text, html, empty, val
+- Attributes: attr, removeAttr, data
+- DOM: append, prepend, after, before, wrap, unwrap, replaceWith, remove, clone
+- Visibility: show, hide, toggle, fadeIn, fadeOut
+
+**Handling Complex Thematic Requests:**
+When a user asks for a theme (e.g., "beach theme", "dark mode"):
+1. Create MULTIPLE transformations, each handling a different aspect
+2. Think holistically: background, text, headings, buttons, links, inputs
+3. Use a coordinated color palette
+4. Add hover effects by injecting <style> tags
+5. Ensure text remains readable
+
+**Command Chaining:**
+Commands execute in sequence. Chain logically: create element, then style it.
 ```
 
-#### **Example Input**
+#### **Example: Complex Theme Request**
 
-```json
-{
-  "prompt": "Make all titles larger and buttons rounded",
-  "html": "<html>...</html>",
-  "actions": ["color", "text", "layout", "visibility", "style"]
-}
-```
+**Input:** "Make the page beach themed"
 
-#### **Expected Output**
-
-```json
-{
-  "transformations": [
-    { "selector": "h1, h2, h3", "action": "style", "params": {"font-size": "2em"} },
-    { "selector": "button", "action": "style", "params": {"border-radius": "12px"} }
-  ]
-}
-```
+**Output:** Multiple transformations covering background, buttons, text, etc. with
+coordinated ocean/sand colors, gradients, and decorative elements.
 
 ---
 

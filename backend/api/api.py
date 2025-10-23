@@ -1,11 +1,6 @@
-"""
-FastAPI backend for AI Website Customizer Chrome Extension
-"""
-
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
-
 from transform.llm import llm_service
 from save_requests import request_saver
 from .types import TransformationRequest
@@ -27,23 +22,28 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, 
 @app.post("/generate_transformations")
 async def generate_transformations(request: TransformationRequest):
     """
-    Generate jQuery selector-based transformations from natural language prompt.
+    Generate CSP-safe DOM transformations from natural language prompt.
 
     Takes HTML, screenshot, and user prompt, then uses LLM to generate
-    structured transformations that can be applied by the extension.
+    structured action chains that can be applied by the extension.
 
-    Returns: JSON with 'transformations' array containing selector/action/params objects
+    Returns: JSON with 'transformations' array containing action chains
 
     Example Response:
         {
             "transformations": [
                 {
-                    "selector": "body",
-                    "action": "color",
-                    "params": {"background-color": "green"}
+                    "description": "Apply green background",
+                    "actions": [
+                        {
+                            "method": "css",
+                            "selector": "body",
+                            "cssProps": {"background-color": "green"}
+                        }
+                    ]
                 }
             ],
-            "summary": "Applied background color change",
+            "summary": "Generated 1 transformations for: make background green",
             "selectors": ["body"]
         }
     """
@@ -56,18 +56,40 @@ async def generate_transformations(request: TransformationRequest):
         # Call LLM service with request object
         result = llm_service.generate_transformations(request)
 
-        # Extract transformations
+        # Extract transformations and debugging info
         transformations = result.get("transformations", [])
+        llm_messages = result.get("llm_messages")
+        llm_response = result.get("llm_response")
         print(f"[Generate Transformations] Generated {len(transformations)} transformations")
 
-        # Save request data
-        request_saver.save_transformation_request(prompt=request.prompt,html=request.html,screenshot=request.screenshot,transformations=transformations,url=request.url)
+        # Extract all unique selectors from all actions in all transformations
+        selectors = []
+        for t in transformations:
+            for action in t.get("actions", []):
+                selector = action.get("selector")
+                if selector and selector not in selectors:
+                    selectors.append(selector)
 
-        return {
+        # Build response for extension
+        extension_response = {
             "transformations": transformations,
             "summary": f"Generated {len(transformations)} transformations for: {request.prompt}",
-            "selectors": [t["selector"] for t in transformations]
+            "selectors": selectors
         }
+
+        # Save request data with all debugging information
+        request_saver.save_transformation_request(
+            prompt=request.prompt,
+            html=request.html,
+            screenshot=request.screenshot,
+            transformations=transformations,
+            url=request.url,
+            llm_messages=llm_messages,
+            llm_response=llm_response,
+            extension_response=extension_response
+        )
+
+        return extension_response
 
     except Exception as e:
         print(f"[Generate Transformations] Error: {str(e)}")

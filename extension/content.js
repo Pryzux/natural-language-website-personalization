@@ -1,73 +1,86 @@
 /**
- * Content Script
- * Automatically reapplies cached transformations on page load and periodically
+ * Content Script - jQuery Command Chain Executor
+ * Executes safe, declarative jQuery transformations
  */
 
 (function() {
     'use strict';
 
     let reapplyInterval = null;
+    let currentTransformations = null;
 
     /**
-     * Action handlers for different transformation types
+     * Execute a single transformation (selector + command chain)
      */
-    const actionHandlers = {
-        color: (selector, params) => {
-            document.querySelectorAll(selector).forEach(el => {
-                Object.assign(el.style, params);
-            });
-        },
-        text: (selector, params) => {
-            document.querySelectorAll(selector).forEach(el => {
-                if (params.replace !== undefined) {
-                    el.textContent = params.replace;
-                }
-            });
-        },
-        visibility: (selector, params) => {
-            document.querySelectorAll(selector).forEach(el => {
-                Object.assign(el.style, params);
-            });
-        },
-        style: (selector, params) => {
-            document.querySelectorAll(selector).forEach(el => {
-                Object.assign(el.style, params);
-            });
-        },
-        layout: (selector, params) => {
-            document.querySelectorAll(selector).forEach(el => {
-                Object.assign(el.style, params);
-            });
-        }
-    };
+    function executeTransformation(transformation) {
+        const { selector, commands } = transformation;
 
-    /**
-     * Apply transformations to the page
-     */
-    function applyTransformations(transformations) {
-        if (!transformations || transformations.length === 0) {
-            return;
-        }
+        try {
+            console.log(`[AI Customizer] Executing: ${selector}`);
 
-        transformations.forEach(t => {
-            if (actionHandlers[t.action]) {
-                try {
-                    actionHandlers[t.action](t.selector, t.params);
-                    console.log(`[AI Customizer] Applied ${t.action} to ${t.selector}`);
-                } catch (error) {
-                    console.error(`[AI Customizer] Failed to apply ${t.action} to ${t.selector}:`, error);
-                }
-            } else {
-                console.warn(`[AI Customizer] Unknown action type: ${t.action}`);
+            // Start with jQuery selection
+            let $elements = $(selector);
+
+            if ($elements.length === 0) {
+                // Don't spam console if no elements found during periodic reapplication
+                return;
             }
-        });
 
-        // Mark page as customized
-        window.__aiCustomizerActive = true;
+            console.log(`[AI Customizer] Found ${$elements.length} element(s) for: ${selector}`);
+
+            // Execute command chain
+            commands.forEach((cmd, idx) => {
+                const { method, args = [] } = cmd;
+
+                if (typeof $elements[method] !== 'function') {
+                    console.error(`[AI Customizer] Unknown jQuery method: ${method}`);
+                    return;
+                }
+
+                try {
+                    // Execute method and update $elements for chaining
+                    const result = $elements[method](...args);
+
+                    // Update $elements if method returns jQuery object (for chaining)
+                    if (result && result.jquery) {
+                        $elements = result;
+                    }
+
+                    console.log(`[AI Customizer]   [${idx + 1}/${commands.length}] ${method}(${JSON.stringify(args).substring(0, 50)}...)`);
+                } catch (error) {
+                    console.error(`[AI Customizer] Error executing ${method}:`, error);
+                }
+            });
+
+        } catch (error) {
+            console.error(`[AI Customizer] Error in transformation with selector "${selector}":`, error);
+        }
     }
 
     /**
-     * Get the current domain
+     * Apply all transformations
+     */
+    function applyTransformations(transformations) {
+        console.log('[AI Customizer] Applying transformations:', transformations);
+
+        if (!transformations || transformations.length === 0) {
+            console.warn('[AI Customizer] No transformations provided');
+            return;
+        }
+
+        currentTransformations = transformations;
+
+        transformations.forEach((transformation, idx) => {
+            console.log(`[AI Customizer] === Transformation ${idx + 1}/${transformations.length} ===`);
+            executeTransformation(transformation);
+        });
+
+        window.__aiCustomizerActive = true;
+        console.log('[AI Customizer] All transformations complete');
+    }
+
+    /**
+     * Get current domain
      */
     function getCurrentDomain() {
         try {
@@ -89,7 +102,7 @@
 
         chrome.storage.local.get([key], (result) => {
             if (result[key] && result[key].transformations) {
-                console.log('[AI Customizer] Applying cached transformations for:', domain);
+                console.log('[AI Customizer] Applying cached transformations');
                 applyTransformations(result[key].transformations);
             }
         });
@@ -99,20 +112,19 @@
      * Start periodic reapplication
      */
     function startPeriodicReapplication() {
-        // Clear any existing interval
         if (reapplyInterval) {
             clearInterval(reapplyInterval);
         }
 
-        // Initial application
         loadAndApplyCached();
 
-        // Reapply every 5 seconds to handle dynamic content
         reapplyInterval = setInterval(() => {
-            loadAndApplyCached();
-        }, 5000);
+            if (currentTransformations) {
+                applyTransformations(currentTransformations);
+            }
+        }, 2000);
 
-        console.log('[AI Customizer] Started periodic reapplication (every 5 seconds)');
+        console.log('[AI Customizer] Started periodic reapplication (every 2s)');
     }
 
     /**
@@ -133,11 +145,17 @@
         const domain = getCurrentDomain();
         if (!domain) return;
 
-        // Check if we have cached transformations for this domain
+        // Check if jQuery is available
+        if (typeof $ === 'undefined') {
+            console.error('[AI Customizer] jQuery not loaded! Transformations will not work.');
+            return;
+        }
+
+        console.log('[AI Customizer] jQuery loaded successfully, version:', $.fn.jquery);
+
         const key = `transform_${domain}`;
         chrome.storage.local.get([key], (result) => {
             if (result[key] && result[key].transformations) {
-                // We have transformations, start periodic reapplication
                 startPeriodicReapplication();
             } else {
                 console.log('[AI Customizer] No cached transformations for:', domain);
@@ -146,11 +164,16 @@
     }
 
     /**
-     * Listen for messages from background script
+     * Listen for messages
      */
-    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-        if (message.action === 'applyTransformations') {
-            // Apply transformations and start periodic reapplication
+    chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+        console.log('[AI Customizer] Message received:', message.action);
+
+        if (message.action === 'ping') {
+            console.log('[AI Customizer] Ping received');
+            sendResponse({ success: true });
+        } else if (message.action === 'applyTransformations') {
+            console.log('[AI Customizer] Applying transformations');
             applyTransformations(message.transformations);
             startPeriodicReapplication();
             sendResponse({ success: true });
@@ -161,6 +184,8 @@
             stopPeriodicReapplication();
             sendResponse({ success: true });
         }
+
+        return true; // Keep channel open for async response
     });
 
     /**
@@ -169,7 +194,6 @@
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', initialize);
     } else {
-        // DOM already loaded
         initialize();
     }
 
