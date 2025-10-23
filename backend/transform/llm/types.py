@@ -1,89 +1,125 @@
-from typing import List, Dict, Any, Optional
-from pydantic import BaseModel, Field
+from typing import List, Dict, Any, Optional, Union, Literal
+from pydantic import BaseModel, Field, field_validator
+import re
+
+
+# Safe jQuery methods (CSP-compatible, no event handlers with inline functions)
+SAFE_JQUERY_METHODS = [
+    # Traversal / Selection
+    "find", "eq", "filter", "not", "parent", "children", "closest", "siblings",
+    "next", "prev", "first", "last", "slice", "has", "add",
+
+    # DOM Manipulation
+    "append", "prepend", "before", "after", "appendTo", "prependTo", "remove",
+    "empty", "detach", "replaceWith", "wrap", "unwrap", "clone",
+
+    # Attributes & Properties
+    "attr", "removeAttr", "prop", "removeProp", "val",
+
+    # Classes
+    "addClass", "removeClass", "toggleClass", "hasClass",
+
+    # CSS & Style
+    "css", "height", "width", "innerHeight", "innerWidth", "outerHeight", "outerWidth",
+
+    # Content
+    "text", "html",
+
+    # Visibility
+    "show", "hide", "toggle",
+
+    # Data & Utility
+    "data", "removeData"
+]
 
 
 class Command(BaseModel):
+    """A single jQuery method call in a command chain"""
+    method: str = Field(..., description="jQuery method name")
+    args: List[Union[str, int, float, bool, Dict[str, Any], None]] = Field(
+        default_factory=list,
+        description="Arguments to pass to the method"
+    )
+
+    @field_validator('method')
+    @classmethod
+    def validate_method(cls, v: str) -> str:
+        """Ensure only safe jQuery methods are used"""
+        if v not in SAFE_JQUERY_METHODS:
+            raise ValueError(f"Method '{v}' is not in the safe subset. Allowed: {SAFE_JQUERY_METHODS}")
+        return v
+
+    @field_validator('args')
+    @classmethod
+    def sanitize_html_args(cls, v: List[Any], info) -> List[Any]:
+        """Sanitize HTML content in arguments for methods that insert HTML"""
+        method = info.data.get('method')
+
+        # Methods that accept HTML content
+        html_methods = ['html', 'append', 'prepend', 'before', 'after',
+                       'appendTo', 'prependTo', 'replaceWith', 'wrap']
+
+        if method not in html_methods:
+            return v
+
+        # Sanitize string arguments
+        sanitized = []
+        for arg in v:
+            if isinstance(arg, str):
+                sanitized.append(sanitize_html(arg))
+            else:
+                sanitized.append(arg)
+
+        return sanitized
+
+
+def sanitize_html(html: str) -> str:
     """
-    A single jQuery command to execute on the DOM.
+    Sanitize HTML to prevent XSS attacks.
 
-    For 'css' method, use cssProps field.
-    For 'relocate' method, use target and position fields.
-    For other methods, use content field.
+    Removes:
+    - <script> tags and contents
+    - on* event attributes (onclick, onload, etc.)
+    - javascript: protocol in href/src
+    - data: URLs (potential XSS vector)
+
+    This is a basic sanitizer - for production, consider using a library like bleach.
     """
-    selector: str = Field(
-        ...,
-        description="CSS selector to target elements"
-    )
-    method: str = Field(
-        ...,
-        description="jQuery method name: css, addClass, removeClass, text, html, append, prepend, remove, hide, show, relocate, etc."
-    )
+    if not html:
+        return html
 
-    # Separate field for CSS properties - much clearer for the LLM
-    cssProps: Optional[Dict[str, str]] = Field(
-        default=None,
-        description="CSS properties as key-value pairs. Use this for 'css' method only.",
-        examples=[
-            {"background": "linear-gradient(to bottom, #87CEEB 0%, #F4A460 100%)", "color": "#2C3E50", "padding": "20px"},
-            {"color": "#006994", "font-size": "24px", "text-shadow": "2px 2px 4px rgba(255,255,255,0.5)"}
-        ]
-    )
+    # Remove <script> tags and contents
+    html = re.sub(r'<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>', '', html, flags=re.IGNORECASE)
 
-    # Simple field for other arguments
-    content: Optional[str] = Field(
-        default=None,
-        description="Content for methods like text, html, append, prepend, addClass, removeClass",
-        examples=["<h1>Welcome to the Beach</h1>", "beach-theme", "Hello World"]
-    )
+    # Remove on* event attributes
+    html = re.sub(r'\s+on\w+\s*=\s*["\'][^"\']*["\']', '', html, flags=re.IGNORECASE)
+    html = re.sub(r'\s+on\w+\s*=\s*[^\s>]+', '', html, flags=re.IGNORECASE)
 
-    # Fields for relocate method
-    target: Optional[str] = Field(
-        default=None,
-        description="Target selector for 'relocate' method. The destination where element will be moved.",
-        examples=["body", ".main-content", "#sidebar"]
-    )
-    position: Optional[str] = Field(
-        default=None,
-        description="Position relative to target for 'relocate' method: 'append', 'prepend', 'before', 'after'",
-        examples=["append", "prepend", "before", "after"]
-    )
+    # Remove javascript: protocol
+    html = re.sub(r'href\s*=\s*["\']javascript:[^"\']*["\']', '', html, flags=re.IGNORECASE)
+    html = re.sub(r'src\s*=\s*["\']javascript:[^"\']*["\']', '', html, flags=re.IGNORECASE)
+
+    # Remove data: URLs (can be used for XSS)
+    html = re.sub(r'href\s*=\s*["\']data:[^"\']*["\']', '', html, flags=re.IGNORECASE)
+    html = re.sub(r'src\s*=\s*["\']data:[^"\']*["\']', '', html, flags=re.IGNORECASE)
+
+    return html
 
 
 class Transformation(BaseModel):
-    """
-    A transformation consisting of one or more chained commands.
+    """A jQuery transformation with selector and command chain"""
+    selector: str = Field(..., description="jQuery selector to find target elements")
+    commands: List[Command] = Field(..., min_length=1, description="jQuery methods to execute in sequence")
 
-    Commands are executed in sequence to achieve a specific goal.
-
-    Example:
-        {
-            "description": "Hide ads and add custom message",
-            "commands": [
-                {"selector": ".ad", "method": "remove", "args": []},
-                {"selector": "body", "method": "prepend", "args": ["<div>Clean!</div>"]}
-            ]
-        }
-    """
-    description: str = Field(
-        ...,
-        description="Brief human-readable description of what this transformation does"
-    )
-    commands: List[Command] = Field(
-        ...,
-        min_length=1,
-        description="List of commands to execute in sequence to achieve the transformation"
-    )
+    @field_validator('selector')
+    @classmethod
+    def validate_selector(cls, v: str) -> str:
+        """Basic validation that selector is not empty"""
+        if not v or not v.strip():
+            raise ValueError("Selector cannot be empty")
+        return v.strip()
 
 
 class TransformationResponse(BaseModel):
-    """
-    The complete response containing all transformations to apply to the page.
-
-    For complex thematic requests (e.g., "beach theme"), this should contain
-    multiple transformations, each handling a different aspect (background, buttons, etc.)
-    """
-    transformations: List[Transformation] = Field(
-        ...,
-        min_length=1,
-        description="List of transformations to apply to the page"
-    )
+    """LLM response containing jQuery transformations"""
+    transformations: List[Transformation] = Field(..., min_length=1)

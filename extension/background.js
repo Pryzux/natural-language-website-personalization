@@ -70,65 +70,19 @@ async function generateTransformations(prompt, pageContext, apiUrl) {
 }
 
 /**
- * Apply transformations to the page
+ * Apply transformations to the page by sending to content script
  */
 async function applyTransformations(tabId, transformations) {
     try {
-        await chrome.scripting.executeScript({
-            target: { tabId },
-            func: (transformations) => {
-                // Action handlers for different transformation types
-                const actionHandlers = {
-                    color: (selector, params) => {
-                        document.querySelectorAll(selector).forEach(el => {
-                            Object.assign(el.style, params);
-                        });
-                    },
-                    text: (selector, params) => {
-                        document.querySelectorAll(selector).forEach(el => {
-                            if (params.replace !== undefined) {
-                                el.textContent = params.replace;
-                            }
-                        });
-                    },
-                    visibility: (selector, params) => {
-                        document.querySelectorAll(selector).forEach(el => {
-                            Object.assign(el.style, params);
-                        });
-                    },
-                    style: (selector, params) => {
-                        document.querySelectorAll(selector).forEach(el => {
-                            Object.assign(el.style, params);
-                        });
-                    },
-                    layout: (selector, params) => {
-                        document.querySelectorAll(selector).forEach(el => {
-                            Object.assign(el.style, params);
-                        });
-                    }
-                };
+        console.log('[Background] Sending transformations to content script');
 
-                // Apply each transformation
-                transformations.forEach(t => {
-                    if (actionHandlers[t.action]) {
-                        try {
-                            actionHandlers[t.action](t.selector, t.params);
-                            console.log(`[Transformation] Applied ${t.action} to ${t.selector}`);
-                        } catch (error) {
-                            console.error(`[Transformation] Failed to apply ${t.action} to ${t.selector}:`, error);
-                        }
-                    } else {
-                        console.warn(`[Transformation] Unknown action type: ${t.action}`);
-                    }
-                });
-
-                // Mark page as customized
-                window.__aiCustomizerActive = true;
-                console.log(`[Transformation] Applied ${transformations.length} transformations`);
-            },
-            args: [transformations]
+        // Send transformations to content script
+        await chrome.tabs.sendMessage(tabId, {
+            action: 'applyTransformations',
+            transformations: transformations
         });
 
+        console.log('[Background] Transformations applied successfully');
         return true;
     } catch (error) {
         console.error('[Background] Failed to apply transformations:', error);
@@ -187,7 +141,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 await applyTransformations(tabId, transformationData.transformations);
 
                 console.log('[Background] Saving transformation...');
-                await saveTransformation(pageContext.url, transformationData);
+                await saveTransformation(pageContext.url, {
+                    ...transformationData,
+                    transformations: transformationData.transformations
+                });
 
                 sendResponse({
                     success: true,

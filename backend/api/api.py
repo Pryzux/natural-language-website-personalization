@@ -22,23 +22,23 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, 
 @app.post("/generate_transformations")
 async def generate_transformations(request: TransformationRequest):
     """
-    Generate jQuery command-chain transformations from natural language prompt.
+    Generate CSP-safe DOM transformations from natural language prompt.
 
     Takes HTML, screenshot, and user prompt, then uses LLM to generate
-    structured command chains that can be applied by the extension.
+    structured action chains that can be applied by the extension.
 
-    Returns: JSON with 'transformations' array containing command chains
+    Returns: JSON with 'transformations' array containing action chains
 
     Example Response:
         {
             "transformations": [
                 {
                     "description": "Apply green background",
-                    "commands": [
+                    "actions": [
                         {
-                            "selector": "body",
                             "method": "css",
-                            "args": [{"background-color": "green"}]
+                            "selector": "body",
+                            "cssProps": {"background-color": "green"}
                         }
                     ]
                 }
@@ -62,11 +62,11 @@ async def generate_transformations(request: TransformationRequest):
         llm_response = result.get("llm_response")
         print(f"[Generate Transformations] Generated {len(transformations)} transformations")
 
-        # Extract all unique selectors from all commands in all transformations
+        # Extract all unique selectors from all actions in all transformations
         selectors = []
         for t in transformations:
-            for cmd in t.get("commands", []):
-                selector = cmd.get("selector")
+            for action in t.get("actions", []):
+                selector = action.get("selector")
                 if selector and selector not in selectors:
                     selectors.append(selector)
 
