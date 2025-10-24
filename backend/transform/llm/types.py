@@ -10,8 +10,9 @@ SAFE_JQUERY_METHODS = [
     "next", "prev", "first", "last", "slice", "has", "add",
 
     # DOM Manipulation
-    "append", "prepend", "before", "after", "appendTo", "prependTo", "remove",
-    "empty", "detach", "replaceWith", "wrap", "unwrap", "clone",
+    "append", "prepend", "before", "after", "appendTo", "prependTo",
+    "insertAfter", "insertBefore", "remove", "empty", "detach",
+    "replaceWith", "wrap", "unwrap", "clone",
 
     # Attributes & Properties
     "attr", "removeAttr", "prop", "removeProp", "val",
@@ -56,7 +57,8 @@ class Command(BaseModel):
 
         # Methods that accept HTML content
         html_methods = ['html', 'append', 'prepend', 'before', 'after',
-                       'appendTo', 'prependTo', 'replaceWith', 'wrap']
+                       'appendTo', 'prependTo', 'insertAfter', 'insertBefore',
+                       'replaceWith', 'wrap']
 
         if method not in html_methods:
             return v

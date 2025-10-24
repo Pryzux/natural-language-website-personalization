@@ -68,8 +68,13 @@ You can ONLY use these methods. Each method is called on the selected elements a
 | `prepend` | `content: string` | Prepend HTML to start | `{ "method": "prepend", "args": ["<span>First</span>"] }` |
 | `before` | `content: string` | Insert HTML before | `{ "method": "before", "args": ["<hr>"] }` |
 | `after` | `content: string` | Insert HTML after | `{ "method": "after", "args": ["<br>"] }` |
+| `appendTo` | `target: string` | Append to target | `{ "method": "appendTo", "args": [".container"] }` |
+| `prependTo` | `target: string` | Prepend to target | `{ "method": "prependTo", "args": [".container"] }` |
+| `insertAfter` | `target: string` | Insert after target | `{ "method": "insertAfter", "args": [".element"] }` |
+| `insertBefore` | `target: string` | Insert before target | `{ "method": "insertBefore", "args": [".element"] }` |
 | `remove` | (none) | Remove from DOM | `{ "method": "remove", "args": [] }` |
 | `empty` | (none) | Remove child nodes | `{ "method": "empty", "args": [] }` |
+| `detach` | (none) | Remove but keep data | `{ "method": "detach", "args": [] }` |
 | `replaceWith` | `content: string` | Replace with HTML | `{ "method": "replaceWith", "args": ["<div>New</div>"] }` |
 | `wrap` | `html: string` | Wrap each element | `{ "method": "wrap", "args": ["<div class='wrapper'></div>"] }` |
 | `unwrap` | (none) | Remove parent wrapper | `{ "method": "unwrap", "args": [] }` |
@@ -90,6 +95,7 @@ You can ONLY use these methods. Each method is called on the selected elements a
 | `addClass` | `className: string` | Add class(es) | `{ "method": "addClass", "args": ["active highlight"] }` |
 | `removeClass` | `className: string` | Remove class(es) | `{ "method": "removeClass", "args": ["hidden"] }` |
 | `toggleClass` | `className: string` | Toggle class | `{ "method": "toggleClass", "args": ["expanded"] }` |
+| `hasClass` | `className: string` | Check if has class | `{ "method": "hasClass", "args": ["active"] }` |
 
 ### CSS & Style
 | Method | Args | Description | Example |
@@ -97,6 +103,10 @@ You can ONLY use these methods. Each method is called on the selected elements a
 | `css` | `property: string, value: string` OR `{prop: val}` | Set CSS | `{ "method": "css", "args": [{"color": "red", "font-size": "20px"}] }` |
 | `height` | `value?: number` | Get/set height | `{ "method": "height", "args": [100] }` |
 | `width` | `value?: number` | Get/set width | `{ "method": "width", "args": [200] }` |
+| `innerHeight` | `value?: number` | Get/set inner height | `{ "method": "innerHeight", "args": [100] }` |
+| `innerWidth` | `value?: number` | Get/set inner width | `{ "method": "innerWidth", "args": [200] }` |
+| `outerHeight` | `value?: number` | Get/set outer height | `{ "method": "outerHeight", "args": [100] }` |
+| `outerWidth` | `value?: number` | Get/set outer width | `{ "method": "outerWidth", "args": [200] }` |
 
 ### Content
 | Method | Args | Description | Example |
