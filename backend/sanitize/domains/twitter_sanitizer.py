@@ -436,7 +436,7 @@ def sanitize(request) -> "TransformationRequest":
     Returns:
         TransformationRequest with sanitized HTML
     """
-    from api.types import TransformationRequest
+    from shared.api import TransformationRequest
 
     original_size = len(request.html)
     sanitized_html = twitter_sanitizer.sanitize(request.html)

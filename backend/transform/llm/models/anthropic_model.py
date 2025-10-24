@@ -39,6 +39,13 @@ class AnthropicModel(BaseLLMModel):
         Returns:
             str: Raw text response
         """
+        # Calculate approximate message sizes for debugging
+        system_chars = len(system_prompt)
+        user_text_chars = sum(len(item.get("text", "")) for item in user_message if item.get("type") == "text")
+        user_images = sum(1 for item in user_message if item.get("type") == "image")
+
+        print(f"[Anthropic] Sending request: system={system_chars:,} chars, user_text={user_text_chars:,} chars, images={user_images}")
+
         response = self.client.messages.create(
             model=self.model_version,
             max_tokens=4096,
@@ -51,6 +58,11 @@ class AnthropicModel(BaseLLMModel):
                 }
             ]
         )
+
+        # Log token usage from response
+        if hasattr(response, 'usage'):
+            usage = response.usage
+            print(f"[Anthropic] Token usage: input={usage.input_tokens:,}, output={usage.output_tokens:,}, total={usage.input_tokens + usage.output_tokens:,}")
 
         return response.content[0].text
 
